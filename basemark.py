@@ -388,7 +388,7 @@ ParaMark Base Benchmark (version %s, %s)
     # return a 7-tuple
     # (opName, opCount, minopTime, maxopTime, elapsedTime, startTime, endTime)
     def mkdir(self, dirs=None):
-        """mkdir""" # special usage, do not modify
+        """mkdir""" # special purpose, do not modify
         minop = INTEGER_MAX 
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -417,7 +417,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('mkdir', opcnt, minop, maxop, elapsed, start, end)
 
     def rmdir(self, dirs=None):
-        """rmdir""" # special usage, do not modify
+        """rmdir""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -447,7 +447,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('rmdir', opcnt, minop, maxop, elapsed, start, end)
 
     def creat(self, files=None, flags=None, mode=0600):
-        """creat""" # special usage, do not modify
+        """creat""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -483,7 +483,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('creat', opcnt, minop, maxop, elapsed, start, end) 
 
     def access(self, files=None, mode=None):
-        """access""" # special usage, do not modify
+        """access""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -514,7 +514,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('access', opcnt, minop, maxop, elapsed, start, end) 
 
     def open(self, files=None, flags=None):
-        """open""" # special usage, do not modify
+        """open""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -546,7 +546,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('open', opcnt, minop, maxop, elapsed, start, end) 
     
     def open_close(self, files=None, flags=None):
-        """open+close""" # special usage, do not modify
+        """open+close""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -578,7 +578,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('open+close', opcnt, minop, maxop, elapsed, start, end) 
     
     def stat(self, files=None):
-        """stat""" # special usage, do not modify
+        """stat""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -607,7 +607,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('stat', opcnt, minop, maxop, elapsed, start, end) 
     
     def stat_non(self, files=None):
-        """stat_NONEXIST""" # special usage, do not modify
+        """stat_NONEXIST""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -639,7 +639,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('stat_NONEXIST', opcnt, minop, maxop, elapsed, start, end) 
         
     def utime(self, files=None, times=None):
-        """utime""" # special usage, do not modify
+        """utime""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -668,7 +668,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('utime', opcnt, minop, maxop, elapsed, start, end) 
         
     def chmod(self, files=None, mode=None):
-        """chmod""" # special usage, do not modify
+        """chmod""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -699,7 +699,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('chmod', opcnt, minop, maxop, elapsed, start, end) 
         
     def rename(self, files=None):
-        """rename""" # special usage, do not modify
+        """rename""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -736,7 +736,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('rename', opcnt, minop, maxop, elapsed, start, end) 
 
     def unlink(self, files=None):
-        """unlink""" # special usage, do not modify
+        """unlink""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -765,7 +765,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('unlink', opcnt, minop, maxop, elapsed, start, end) 
 
     def read(self, file=None, flags=None, fsize=None, blksize=None):
-        """read""" # special usage, do not modify
+        """read""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -810,7 +810,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('read', opcnt, minop, maxop, elapsed, start, end)
 
     def reread(self, file=None, flags=None, fsize=None, blksize=None):
-        """reread""" # special usage, do not modify
+        """reread""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -855,7 +855,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('reread', opcnt, minop, maxop, elapsed, start, end)
     
     def write(self, file=None, flags=None, mode=0600, fsize=None, blksize=None):
-        """write""" # special usage, do not modify
+        """write""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -905,7 +905,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('write', opcnt, minop, maxop, elapsed, start, end)
     
     def rewrite(self, file=None, flags=None, mode=0600, fsize=None, blksize=None):
-        """rewrite""" # special usage, do not modify
+        """rewrite""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -955,7 +955,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('rewrite', opcnt, minop, maxop, elapsed, start, end)
     
     def fread(self, file=None, flags='r', fsize=None, blksize=None):
-        """fread""" # special usage, do not modify
+        """fread""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -995,7 +995,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('fread', opcnt, minop, maxop, elapsed, start, end)
     
     def freread(self, file=None, flags='r', fsize=None, blksize=None):
-        """freread""" # special usage, do not modify
+        """freread""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -1035,7 +1035,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('freread', opcnt, minop, maxop, elapsed, start, end)
 
     def fwrite(self, file=None, flags='w', fsize=None, blksize=None):
-        """fwrite""" # special usage, do not modify
+        """fwrite""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -1080,7 +1080,7 @@ ParaMark Base Benchmark (version %s, %s)
         return ('fwrite', opcnt, minop, maxop, elapsed, start, end)
     
     def frewrite(self, file=None, flags='w', fsize=None, blksize=None):
-        """frewrite""" # special usage, do not modify
+        """frewrite""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -1126,7 +1126,7 @@ ParaMark Base Benchmark (version %s, %s)
 
     def randread(self, file=None, flags=None, fsize=None, blksize=None,
                  seed=None):
-        """randread""" # special usage, do not modify
+        """randread""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -1169,7 +1169,9 @@ ParaMark Base Benchmark (version %s, %s)
             elapsed = timer() - start
         for offset in randwalk:
             optick = timer()
-            os.lseek(fd, offset, os.SEEK_SET)
+            # os.SEEK_SET = 0, back compatibility
+            # os.lseek(fd, offset, os.SEEK_SET)
+            os.lseek(fd, offset, 0)
             ret = os.read(fd, blksize)
             optick = timer() - optick
             minop = min(minop, optick)
@@ -1185,7 +1187,7 @@ ParaMark Base Benchmark (version %s, %s)
     
     def randwrite(self, file=None, flags=None, fsize=None, blksize=None,
                   seed=None):
-        """randwrite""" # special usage, do not modify
+        """randwrite""" # special purpose, do not modify
         minop = INTEGER_MAX
         maxop = INTEGER_MIN
         elapsed = opcnt = 0
@@ -1229,7 +1231,9 @@ ParaMark Base Benchmark (version %s, %s)
             elapsed = timer() - start
         for offset in randwalk:
             optick = timer()
-            os.lseek(fd, offset, os.SEEK_SET)
+            # os.SEEK_SET = 0, back compatibility
+            # os.lseek(fd, offset, os.SEEK_SET)
+            os.lseek(fd, offset, 0)
             ret = os.write(fd, block)
             optick = timer() - optick
             minop = min(minop, optick)
@@ -1242,6 +1246,7 @@ ParaMark Base Benchmark (version %s, %s)
             end = timer()
 
         return ('randwrite', opcnt, minop, maxop, elapsed, start, end)
+
 #### Standalone routines ####
 def parse_argv(argv):
     usage = "usage: %prog [options]"

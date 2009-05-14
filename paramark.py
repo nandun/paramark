@@ -629,7 +629,7 @@ def main():
     try:
         set_close_on_exec()
     except IOError:
-        es("usage: gxpc mw gio.py\n")
+        es("usage: gxpc mw paramark.py\n")
         return 1
     wp = os.fdopen(3, "wb")
     fp = os.fdopen(4, "rb")
