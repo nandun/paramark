@@ -26,7 +26,7 @@ import textwrap
 import time
 
 PARAMARK_VERSION = 0.1
-PARAMARK_DATE = "2009-05-01"
+PARAMARK_DATE = "2009-05-14"
 
 INTEGER_MAX = sys.maxint
 INTEGER_MIN = -sys.maxint -1
@@ -44,8 +44,6 @@ OPSET_IO = ["write", "rewrite", "read", "reread", "fwrite", "frewrite",
 
 OPDATA_META = ["op", "nproc", "factor", "opcnt", "what"]
 OPDATA_IO = ["op", "nproc", "fsize", "blksize", "what"]
-OPDATA_WHAT_PROC_1 = ["exectime", "mintime/call", "maxtime/call", 
-                      "throughput"]
 
 VERBOSE_CHECKPOINT = 2
 VERBOSE_OP = 3
