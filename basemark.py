@@ -304,7 +304,8 @@ class BaseBenchmark:
             "exectime", "mintime/call", "maxtime/call", "throughput"])
         metacsv.writerow(["operation", "proc#", "count", "factor", "exectime",
             "mintime/call", "maxtime/call", "throughput"])
-
+        
+        unit = eval(self.unit)
         for t in tests:
             if t.env["optype"] == "meta":
                 for d in t.dat:
@@ -322,8 +323,7 @@ class BaseBenchmark:
                     opname, opcnt, opmin, opmax, elapsed, start, end = d
                     row = [opname, nproc, "%s%s" % smart_datasize(fsize), 
                         "%s%s" % smart_datasize(blksize), elapsed, opmin,
-                        opmax]
-                    row.append("%s" % (fsize/elapsed))
+                        opmax, "%s" % (fsize/elapsed/unit)]
                     iocsv.writerow(row)
         
         iof.close()
