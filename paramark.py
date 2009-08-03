@@ -33,7 +33,7 @@ import textwrap
 import time
 
 from common import *
-from basemark import *
+from benchmark import *
 
 # GXP stuff
 def get_rank():

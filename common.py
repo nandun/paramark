@@ -16,17 +16,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-#############################################
-# common constants, routines and utilities
-#############################################
+#
+# Common Constants, Routines and Utilities
+#
 
 import sys
 import optparse
 import textwrap
 import time
-
-PARAMARK_VERSION = 0.1
-PARAMARK_DATE = "2009-05-14"
 
 INTEGER_MAX = sys.maxint
 INTEGER_MIN = -sys.maxint -1
@@ -36,19 +33,15 @@ MB = 1048576
 GB = 1073741824
 TB = 1099511627776
 
-OPSET_META = ["mkdir", "rmdir", "creat", "access", "open", "open+close",
-              "stat", "stat_NONEXIST", "utime", "chmod", "rename", 
-              "unlink"]
-OPSET_IO = ["write", "rewrite", "read", "reread", "fwrite", "frewrite", 
-            "fread", "freread", "randread", "randwrite"]
+VERBOSE_PROMPT = 0
+VERBOSE_STAGE = 1
+VERBOSE_ERROR = 2
+VERBOSE_WARNING = 3
+VERBOSE_INFO = 4
+VERBOSE_DETAILS = 5
 
 OPDATA_META = ["op", "nproc", "factor", "opcnt", "what"]
 OPDATA_IO = ["op", "nproc", "fsize", "blksize", "what"]
-
-VERBOSE_CHECKPOINT = 2
-VERBOSE_OP = 3
-VERBOSE_OP_DETAILS = 4
-VERBOSE_FILE_DIR = 3
 
 if sys.platform == "win32":
     timer = time.clock
@@ -126,6 +119,21 @@ def list_difference(listoflist):
 def stat_average(listofdata):
     """ return the average of a series of data """
     return sum(listofdata)/float(len(listofdata))
+
+# class init utility
+def update_opts_kw(dict, restrict, opts, kw):
+    """
+    Update dict's value from opts and kw, restrict keyword in restrict
+    """
+    if opts is not None:
+        for key in restrict:
+            if dict.has_key(key) and opts.__dict__.has_key(key):
+                dict[key] = opts.__dict__[key]
+
+    if kw is not None:
+        for key in restrict:
+            if dict.has_key(key) and kw.has_key(key):
+                dict[key] = kw[key]
 
 # OptionParser help string workaround
 # adapted from Tim Chase's code from following thread

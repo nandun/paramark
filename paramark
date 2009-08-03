@@ -1,0 +1,242 @@
+#!/usr/bin/env python
+
+#############################################################################
+# ParaMark: High Fidelity Parallel File System Benchmark
+# Copyright (C) 2009  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#############################################################################
+
+
+#
+# Main Routines
+#
+
+import os
+
+from common import *
+
+OPSET_META = ["mkdir", "rmdir", "creat", "access", "open", "open+close",
+              "stat", "stat_NONEXIST", "utime", "chmod", "rename", 
+              "unlink"]
+
+OPSET_IO = ["write", "rewrite", "read", "reread", "fwrite", "frewrite", 
+            "fread", "freread", "randread", "randwrite"]
+
+def print_version():
+	from version import PARAMARK_VERSION_STRING
+	sys.stdout.write(PARAMARK_VERSION_STRING)
+	sys.exit(0)
+
+def check_path(path):
+    if not os.path.exists(path):
+        sys.stderr.write("No such file or directory, %s\n" % path)
+        sys.exit(1)
+
+def parse_ioops(ioops):
+    ops = eval("[%s]" % ioops)
+    if 0 in ops:
+        return list(OPSET_IO)
+    else:
+        # check operation dependency
+        if 1 not in ops:
+            ops.append(1)
+        ops.sort()
+        return map(lambda x:OPSET_IO[x-1], ops)
+
+def parse_metaops(metaops):
+    ops = eval("[%s]" % metaops)
+    if 0 in ops:
+        return list(OPSET_META)
+    else:
+        # check operation dependency
+        if 2 in ops and 1 not in ops:
+            ops.append(1)
+        ops.sort()
+        return map(lambda x:OPSET_META[x-1], ops)
+
+def parse_datarange(datarange):
+    return map(lambda x:parse_datasize(x), datarange.strip(",").split(","))
+
+def parse_intrange(intrange):
+    return eval("[%s]" % intrange)
+
+def parse_argv(argv):
+    usage = "usage: %prog [options]"
+    parser = optparse.OptionParser(usage=usage,
+        formatter=OptionParserHelpFormatter())
+    
+    parser.add_option("-a", "--standalone", action="store_true",
+        dest="standalone", default=False,
+        help="non-parallel standalone mode, without using GXP")
+    
+    parser.add_option("-w", "--wdir", action="store", type="string",
+        dest="wdir", metavar="DIR",
+        default=os.path.abspath(os.getcwd()),
+        help="working directory (default: cwd)")
+    
+    parser.add_option("--mode", action="store", type="choice",
+        dest="mode", metavar="auto/io/meta", default="auto",
+        choices = ["auto", "io", "meta"],
+        help="test mode\n"
+             "  auto: run both metadata and I/O test\n"
+             "    io: run I/O test only\n"
+             "  meta: run metadata test only\n")
+
+    parser.add_option("-m", "--meta", action="store", type="string",
+        dest="metaops", metavar="NUM,NUM", default="0",
+        help="metadata operations to run (default: 0)\n"
+             "  0=all, 1=mkdir, 2=rmdir, 3=creat, 4=access,\n"
+             "  5=open, 6=open+close, 7=stat, \n"
+             "  8=stat_NONEXIST, 9=utime, 10=chmod, 11=unlink\n")
+    
+    parser.add_option("-i", "--io", action="store", type="string",
+        dest="ioops", metavar="NUM,NUM", default="0",
+        help="I/O operations to run (default: 0)\n"
+             " 0=all, 1=write, 2=rewrite, 3=read, 4=reread\n"
+             " 5=fwrite, 6=frewrite, 7=fread, 8=freread\n"
+             " 9=randwrite, 10=randread\n")
+    
+    parser.add_option("-s", "--fsize", action="store", type="string",
+        dest="fsizerange", metavar="NUM,NUM", default="1MB",
+        help="file size (default: 1MB)")
+    
+    parser.add_option("-b", "--blksize", action="store", type="string",
+        dest="blksizerange", metavar="NUM,NUM", default="1KB",
+        help="block size (default: 1KB)")
+    
+    parser.add_option("-c", "--count", action="store", type="string",
+        dest="opcntrange", metavar="NUM,NUM", default="10",
+        help="list of numbers of meta operations (default: 10)")
+    
+    parser.add_option("-f", "--factor", action="store", type="string",
+        dest="factorrange", metavar="NUM", default="16",
+        help="factor of directory tree (default: 16)") 
+    
+    parser.add_option("-v", "--verbosity", action="store", type="int",
+        dest="verbosity", metavar="NUM", default=0,
+        help="verbosity level: 0/1/2/3 (default: 0)")
+    
+    parser.add_option("-r", "--report", action="store", type="string",
+        dest="reportdir", metavar="DIR", default=None, 
+        help="path or directory to store report data")
+    
+    parser.add_option("--dryrun", action="store_true",
+        dest="dryrun", default=False,
+        help="dry run, do not execute (default: disabled)")
+    
+    parser.add_option("--without-open", action="store_false",
+        dest="opentime", default=True,
+        help="exclude open in timing (default: disable)")
+    
+    parser.add_option("--without-close", action="store_false",
+        dest="closetime", default=True,
+        help="exclude close in timing (default: disable)")
+    
+    parser.add_option("--syncio", action="store_true",
+        dest="syncio", default=False,
+        help="synchronized I/O (default: disabled)")
+    
+    parser.add_option("--fsync", action="store_true",
+        dest="fsync", default=False,
+        help="include fsync in write (default: disabled)")
+    
+    parser.add_option("--sleep", action="store", type="float",
+        dest="sleep", metavar="SECONDS", default=0.0,
+        help="sleep between operations (default: 0.0)")
+    
+    parser.add_option("--keep", action="store_true",
+        dest="keep", default=False,
+        help="keep temparary files (default: disabled)")
+    
+    parser.add_option("--no-smartsize", action="store_false",
+        dest="reportsmartsize", default=True,
+        help="output human readable size in output (default: on)")
+
+    # report options
+    parser.add_option("--report-format", action="store",
+                type="choice", dest="reportformat", default=None,
+                metavar="screen/html/tex",
+                choices = ["screen", "html", "tex"],
+                help="format of report (default:screen)")
+    
+    parser.add_option("--unit", action="store", type="choice",
+                dest="unit", metavar="KB/MB/GB", default="MB",
+                choices = ['KB','MB','GB','kb','mb','gb',
+                           'K','M','G','k','m','g'],
+                help="unit of throughput in report (default: MB)")
+    
+    # version
+    parser.add_option("--version", action="store_true",
+        dest="version", default=False, help="show version")
+    
+    opts, args = parser.parse_args(argv)
+
+    if opts.version:
+		print_version()
+    
+    if opts.mode in ["auto", "io"]:
+        opts.ioops = parse_ioops(opts.ioops)
+        opts.fsizerange = parse_datarange(opts.fsizerange)
+        opts.blksizerange = parse_datarange(opts.blksizerange)
+    else:
+        opts.ioops = []
+    
+    if opts.mode in ["auto", "meta"]:
+        opts.metaops = parse_metaops(opts.metaops)
+        opts.opcntrange = parse_intrange(opts.opcntrange)
+        opts.factorrange = parse_intrange(opts.factorrange)
+    else:
+        opts.metaops = []
+
+    # check reportdir
+    if opts.reportdir is None:
+        opts.reportdir = os.path.abspath(os.getcwd()) + \
+            time.strftime("/report-%H-%M-%S", time.localtime())
+        opts.reportdir += "/data.db"
+    elif not os.path.exists(opts.reportdir):
+        opts.reportdir = os.path.abspath(opts.reportdir)
+        opts.reportdir += "/data.db"
+    elif os.path.isdir(opts.reportdir):
+        opts.reportdir = os.path.abspath("%s/data.db" % opts.reportdir)
+    else:
+        opts.reportdir = os.path.abspath(opts.reportdir)
+    
+    opts.unit = opts.unit.upper()
+    if not opts.unit.endswith('B'):
+        opts.unit = opts.unit + 'B'
+    
+    return opts, args
+
+def main():
+    opts, args = parse_argv(sys.argv[1:])
+
+    # Data reporting
+    if opts.reportformat is not None:
+        from report import SerialBenchmarkReport
+        check_path(opts.reportdir)
+        rprt = SerialBenchmarkReport(opts.reportdir, opts)
+        if opts.reportformat == "screen":
+            rprt.toscreen()
+        return 0
+
+    # Standalone mode
+    if opts.standalone:
+        from benchmark import SerialBenchmark
+        bench = SerialBenchmark(opts)
+        bench.run()
+        return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
