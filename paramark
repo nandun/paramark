@@ -166,16 +166,18 @@ def parse_argv(argv):
 
     # report options
     parser.add_option("--report-format", action="store",
-                type="choice", dest="reportformat", default=None,
-                metavar="screen/html/tex",
-                choices = ["screen", "html", "tex"],
-                help="format of report (default:screen)")
+        type="choice", dest="reportformat", default=None,
+        metavar="screen/html/tex", choices = ["screen", "html", "tex"],
+        help="format of report (default:screen)")
     
     parser.add_option("-u", "--unit", action="store", type="choice",
-                dest="unit", metavar="KB/MB/GB", default="MB",
-                choices = ['KB','MB','GB','kb','mb','gb',
-                           'K','M','G','k','m','g'],
-                help="unit of throughput in report (default: MB)")
+        dest="unit", metavar="KB/MB/GB", default="MB",
+        choices = ['KB','MB','GB','kb','mb','gb', 'K','M','G','k','m','g'],
+        help="unit of throughput in report (default: MB)")
+    
+    parser.add_option("--chart-data-labels", action="store_true",
+        dest="chartdatalabels", default=False,
+        help="show data point labels in charts")
     
     # version
     parser.add_option("--version", action="store_true",

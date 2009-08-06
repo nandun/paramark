@@ -28,15 +28,17 @@ from database import SerialBenchmarkDB
 class Report():
     def __init__(self, opts=None):
         self.unit = None
+        self.chartdatalabels = None
+        
+        _SerialBenchmarkReport_restrict = ["unit", "chartdatalabels"]
+        update_opts_kw(self.__dict__, _SerialBenchmarkReport_restrict,
+            opts, None)
     
 class SerialBenchmarkReport(Report, SerialBenchmarkDB):
     def __init__(self, dbfile, opts=None):
-        Report.__init__(self)
+        Report.__init__(self, opts)
         SerialBenchmarkDB.__init__(self, dbfile)
 
-        _SerialBenchmarkReport_restrict = ["unit"]
-        update_opts_kw(self.__dict__, _SerialBenchmarkReport_restrict,
-            opts, None)
 
         self.dbhome = os.path.dirname(dbfile)
     
@@ -204,25 +206,48 @@ ParaMark Base Benchmark (version %s, %s)
         env["command"],
         env["working directory"],
         env["mode"]))
-        
+
+        # I/O performance
         f.write(
 """\
-<p align="left"><font size="3" face="Arial"><b><i>Metadata Performance</i></b></font></p>
+<p align="left"><font size="3" face="Arial"><b><i>I/O Performance (%s/s)</i></b></font></p>
+""" % self.unit)
+        labels = []
+        data = []
+        unit = eval(self.unit)
+        for opname,thpt in self.io_select("oper,throughput"):
+            labels.append(opname)
+            data.append(thpt/unit)
+        chart = gchart.BarChart()
+        chart.adddataseries(0, data)
+        chart.setdata()
+        chart.setlabels(labels)
+        chart.setseriescolor("rainbow")
+        if self.chartdatalabels:
+            chart.setdatapointlabels()
+        f.write(chart.html() + "\n")
+
+        
+        # Metadata
+        f.write(
+"""\
+<p align="left"><font size="3" face="Arial"><b><i>Metadata Performance
+(ops/sec)</i></b></font></p>
 """)
-        # Generate chart url
         labels = []
         data = []
         for opname,thpt in self.meta_select("oper,throughput"):
             labels.append(opname)
             data.append(thpt)
-        
         chart = gchart.BarChart()
         chart.adddataseries(0, data)
-        chart.addlabelseries(0, labels)
         chart.setdata()
-        chart.setlabels()
+        chart.setlabels(labels)
+        chart.setseriescolor("rainbow")
+        if self.chartdatalabels:
+            chart.setdatapointlabels()
         f.write(chart.html() + "\n")
-
+        
         f.flush()
         os.fsync(f.fileno())
         f.write(

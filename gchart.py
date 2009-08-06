@@ -24,13 +24,13 @@ import sys
 
 from common import *
 
-# http://www.childoflight.org/mcc/colorcodeA.html
-COLOR_RAINBOW = ["C91F16", "E68601", "CED500", "69B011", "088343", "1F9AD7",
-"113279", "5B0B5A", "C2224A", # deepest series
-"E7860B", "D8DB09", "69AC12", "098D3A", "159BD4", "0D3981", "51095A"]
-COLOR_RAINBOW_TRANSPARENT = map(lambda x:x+"F0", COLOR_RAINBOW)
-
 __all__ = ["BarChart"]
+
+# http://www.childoflight.org/mcc/colorcodeA.html
+COLOR_RAINBOW = ["C91F16", "E68601", "CED500", "69B011", "088343", 
+    "1F9AD7", "113279", "5B0B5A", "C2224A", # deepest series
+    "E7860B", "D8DB09", "69AC12", "098D3A", "159BD4", "0D3981", "51095A"]
+COLOR_RAINBOW_TRANSPARENT = map(lambda x:x+"F0", COLOR_RAINBOW)
 
 class GoogleChart:
     """
@@ -44,17 +44,12 @@ class GoogleChart:
         self.types = []
         self.dataformats = ["t", "s", "e"]
         self.dataformat = "t"
-        self.dataseparator = ","
-        self.dataseriesseparator = "|"
         self.dataseries = []
-        self.datasetrangeseparator = ","
-        self.labelseparator = "|"
-        self.labelseriesseparator = "|"
-        self.labelseries = []
         self.axistypes = ["x", "t", "y", "r"]
-        self.axistypeseparator = ","
         self.axisranges = []
-        self.axisrangeseparator = "|"
+
+        self.valsep = ","   # value separator
+        self.srisep = "|"   # series separator
 
         # url strings requests
         self.reqs = {}
@@ -68,7 +63,10 @@ class GoogleChart:
         self.requrl = "http://chart.apis.google.com/chart?" # request url
         self.maxarea = 300000   # limit of chart area
         self.maxlength = 1000   # limit of width/height
-    
+
+        self.colorscheme = {}
+        self.colorscheme["rainbow"] = COLOR_RAINBOW
+
     # chart generation routines
     def setsize(self, width=800, height=370):
         if width > self.maxlength:
@@ -93,9 +91,9 @@ class GoogleChart:
             self.errstrs.append("Oops, data format %s is not available.\n"
                 % format)
         if format == "t":
-            self.dataseriesseparator = "|"
+            self.srisep = "|"
         elif format in ["s", "e"]:
-            self.dataseriesseparator = ","
+            self.srisep = ","
         self.dataformat = format
     
     def adddataseries(self, series, data):
@@ -108,27 +106,53 @@ class GoogleChart:
         datamax = INTEGER_MIN
         dstrlist = []
         for series in self.dataseries:
-            dstrlist.append(self.dataseparator.join(list_tostring(series)))
+            dstrlist.append(self.valsep.join(list_tostring(series)))
             datamin = min(datamin, min(series))
             datamax = max(datamax, max(series))
         self.reqs["chd"] = "%s:%s" % (self.dataformat, 
-            self.dataseriesseparator.join(dstrlist))
+            self.srisep.join(dstrlist))
 
         return datamin, datamax
-
-    def addlabelseries(self, series, label):
-        self.labelseries.insert(series, label)
     
-    def setlabels(self, labels=None):
-        if labels: self.labelseries = labels
-        
-        serieslist = []
-        for series in self.labelseries:
-            serieslist.append(self.labelseparator.join(series))
-        self.reqs["chl"] = self.labelseriesseparator.join(serieslist)
+    def setdatasetrange(self, datamin, datamax):
+        self.reqs["chds"] = self.valsep.join(list_tostring([datamin, datamax]))
+    
+    def addaxisrange(self, type, start, end, interval):
+        if type not in self.axistypes:
+            self.errstrs.append("Oops, wrong axis type %s.\n" % type)
+        self.axisranges.append((type, start, end, interval))
+    
+    def setaxisrange(self):
+        chxr = []
+        chxt = []
+        index = 0
+        for index in range(0, len(self.axisranges)):
+            type, start, end, interval = self.axisranges[index]
+            chxt.append(type)
+            chxr.append("%d,%s,%s,%s" % (index, start, end, interval))
+        self.reqs["chxt"] = self.valsep.join(chxt)
+        self.reqs["chxr"] = self.srisep.join(chxr)
+
+    def setlabels(self, labels):
+        self.reqs["chl"] = self.srisep.join(labels)
+
+    def setseriescolor(self, colorscheme="rainbow"):
+        self.reqs["chco"] = self.srisep.join(
+            self.colorscheme[colorscheme])
+
+    def setdatapointlabels(self, type="N", contents="*f2*", color="000000",
+        datasetindex=0, datapoint="-1", size=11, priority=0):
+        self.reqs["chm"] = self.valsep.join(list_tostring([type+contents, 
+            color, datasetindex, datapoint, size, priority]))
     
     def html(self, type="img"):
         """ return the html code of requested chart """
+        if len(self.errstrs) > 0: # if error, output red messages
+            urlstr = ""
+            for errstr in self.errstrs:
+                urlstr += "<b><font color=red>%s</font></b><br>" % errstr
+            return urlstr
+
         # compose requests
         urlstr = self.requrl + "\n" + \
             "\n&amp;".join(map(lambda x:"%s=%s" % x, self.reqs.items()))
@@ -143,36 +167,27 @@ class BarChart(GoogleChart):
         self.name = "Bar Chart"
         self.types.extend(["bhs", "bvs", "bhg", "bvg"]) # bar chart types
 
-        # bar chart specific parameters
+        # default settings
         self.reqs["cht"] = "bvg"
         self.reqs["chbh"] = "a"
-        # self.reqs["chxt"] = "y,x"   # axis type
-
-        # set default settings
         self.setdataformat("t")
 
-    def addaxisrange(self, type, start, end, interval):
-        if type not in self.axistypes:
-            self.errstrs.append("Oops, wrong axis type %s.\n" % type)
-        self.axisranges.append((type, start, end, interval))
-
-    def setaxisrange(self):
-        chxr = []
-        chxt = []
-        index = 0
-        for index in range(0, len(self.axisranges)):
-            type, start, end, interval = self.axisranges[index]
-            chxt.append(type)
-            chxr.append("%d,%s,%s,%s" % (index, start, end, interval))
-        self.reqs["chxt"] = self.axistypeseparator.join(chxt)
-        self.reqs["chxr"] = self.axisrangeseparator.join(chxr)
-    
     def setdata(self, listofdata=None):
         datamin, datamax = GoogleChart.setdata(self, listofdata)
         
         ystart, yend, yinterval = loose_ticks(datamin, datamax, 10)
         # need to explicitly set data range
-        self.reqs["chds"] = self.datasetrangeseparator.join(list_tostring(
-            [ystart, yend]))
+        self.setdatasetrange(ystart, yend)
         self.addaxisrange("y", ystart, yend, yinterval)
         self.setaxisrange()
+
+class LineChart(GoogleChart):
+    def __init__(self, opts=None, **kw):
+        GoogleChart.__init__(self)
+
+        self.name = "Line Chart"
+        self.types.extend(["lc", "ls", "lxy"]) # line chart types
+
+        # default settings
+        self.reqs["cht"] = "lc"
+        self.setdataformat("t")
