@@ -171,7 +171,7 @@ def parse_argv(argv):
                 choices = ["screen", "html", "tex"],
                 help="format of report (default:screen)")
     
-    parser.add_option("--unit", action="store", type="choice",
+    parser.add_option("-u", "--unit", action="store", type="choice",
                 dest="unit", metavar="KB/MB/GB", default="MB",
                 choices = ['KB','MB','GB','kb','mb','gb',
                            'K','M','G','k','m','g'],
@@ -229,6 +229,8 @@ def main():
         rprt = SerialBenchmarkReport(opts.reportdir, opts)
         if opts.reportformat == "screen":
             rprt.toscreen()
+        elif opts.reportformat == "html":
+            rprt.tohtml()
         return 0
 
     # Standalone mode

@@ -24,6 +24,7 @@ import sys
 import optparse
 import textwrap
 import time
+import math
 
 INTEGER_MAX = sys.maxint
 INTEGER_MIN = -sys.maxint -1
@@ -89,6 +90,35 @@ def string_hash(str):
         hash = hash + ord(str[i]) * (i + 1);
     return hash
 
+# Adapted from book Graphic Gems
+# Chapter: Nice numbers for graph labels
+#http://books.google.com/books?id=fvA7zLEFWZgC&pg=PA61&lpg=PA61#v=onepage&q=&f=false
+def nicenum(x, round=True, logbase=10):
+    """
+    find a "nice" number approximately equal to x.
+    Round the number if round = true, take ceiling if round = false
+    """
+    exp = math.floor(math.log(x, logbase)) # exponent of x
+    f = x / math.pow(logbase, exp) # fractional part of x
+    if round:
+        if f < 1.5: nf = 1  # nice, rounded fraction
+        elif f < 3: nf = 2
+        elif f < 7: nf = 5
+        else: nf = 10
+    else:
+        if f <= 1: nf = 1
+        elif f <= 2: nf = 2
+        elif f <= 5: nf = 5
+        else: nf = 10
+    return nf * math.pow(logbase, exp)
+
+def loose_ticks(min, max, ntick=10):
+    trange = nicenum(max - min, False)
+    tinterval = nicenum(trange/(ntick - 1), True)
+    tmin = math.floor(min/tinterval)*tinterval
+    tmax = math.ceil(max/tinterval)*tinterval
+    return tmin, tmax, tinterval
+
 # list utilities
 def list_unique(a):
     """ return the list with duplicate elements removed """
@@ -115,10 +145,19 @@ def list_difference(listoflist):
         diff = diff.difference(set(l))
     return list(set(diff))
 
+def list_tostring(alist):
+    """ return the list whose all elements converted to string """
+    return map(lambda x:"%s" % x, alist)
+
 # statistic functions
 def stat_average(listofdata):
     """ return the average of a series of data """
     return sum(listofdata)/float(len(listofdata))
+
+# scale funtion
+def smart_scale(minvalue, maxvalue):
+    """ return proper min/max/interval for axis """
+    return (vmin, vmax, vinterval)
 
 # class init utility
 def update_opts_kw(dict, restrict, opts, kw):

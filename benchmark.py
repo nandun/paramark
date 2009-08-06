@@ -258,7 +258,6 @@ Please use paramark or sqlite3 to view and process your data.
 See paramark -h for more help.
 """ % self.dbfile)
         
-
     def store_env(self):
         # environmental variables
         from version import PARAMARK_VERSION, PARAMARK_DATE

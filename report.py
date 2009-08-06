@@ -25,7 +25,7 @@ import time
 from common import *
 from database import SerialBenchmarkDB
 
-class Report:
+class Report():
     def __init__(self, opts=None):
         self.unit = None
     
@@ -37,6 +37,8 @@ class SerialBenchmarkReport(Report, SerialBenchmarkDB):
         _SerialBenchmarkReport_restrict = ["unit"]
         update_opts_kw(self.__dict__, _SerialBenchmarkReport_restrict,
             opts, None)
+
+        self.dbhome = os.path.dirname(dbfile)
     
     def __del__(self):
         self.close_database()
@@ -139,13 +141,14 @@ ParaMark Base Benchmark (version %s, %s)
             self.home)
     
     def tohtml(self, file=None):
+        import gchart
         if file is None:
-            file = "%s/report.html" % self.home
+            file = "%s/report.html" % self.dbhome
         
         modulesdir = "../modules"
         settingsdir = "../settings"
         datadir = "."
-        basename = os.path.basename(self.home)
+        basename = os.path.basename(self.dbhome)
 
         start = (time.localtime(), timer())
 
@@ -159,11 +162,6 @@ ParaMark Base Benchmark (version %s, %s)
 <!-- 
   ParaMark Report
   by %s at %s
-
-  Prerequisite:
-    * Adobe Flash Player: http://www.adobe.com/go/getflashplayer
-    * SWFObject 2.0: http://code.google.com/p/swfobject/
-    * amCharts: http://www.amcharts.com
 -->
 """ % \
         (os.path.abspath(sys.argv[0]),
@@ -175,69 +173,10 @@ ParaMark Base Benchmark (version %s, %s)
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <title>ParaMark Report: %s</title>
-
-<script type="text/javascript" src="%s/swfobject.js"></script>
-<script type="text/javascript">
-// Globale values
-var chartWidth="980"
-var chartHeight="600"
-var swfVersion="8.0.0"
-var swfInstall="%s/expressInstall.swf"
-""" % \
-        (time.strftime("%a %b %d %Y %H:%M:%S %Z", start[0]),\
-        modulesdir, modulesdir))
-        
-        f.write(
-"""\
-// Chart control functions
-function showAllSeries (chart_id, num){
-  chart = document.getElementById(chart_id);
-  var i=0;
-  for (i=0;i<num;i++)
-  {
-    chart.showGraph(i)
-  }
-} 
-function hideAllSeries (chart_id, num){
-  chart = document.getElementById(chart_id);
-  var i=0;
-  for (i=0;i<num;i++)
-  {
-    chart.hideGraph(i)
-  }
-} 
-function showAllValues (chart_id, num){
-  chart = document.getElementById(chart_id);
-  var i=0;
-  for (i=0;i<num;i++)
-  {
-    chart.selectGraph(i)
-  }
-} 
-function hideAllValues (chart_id, num){
-  chart = document.getElementById(chart_id);
-  var i=0;
-  for (i=0;i<num;i++)
-  {
-    chart.deselectGraph(i)
-  }
-} 
-""")
-
-        f.write(
-"""\
-// Chart: Metadata performance
-var vars={path:"%s/", 
-settings_file:"%s/meta.xml",data_file:"%s/dat_meta.xml"}
-var params={}
-var attrs={}
-swfobject.embedSWF("%s/amcolumn.swf", "meta", chartWidth, chartHeight, swfVersion, swfInstall, vars, params, attrs);
-""" % (modulesdir, settingsdir, datadir, modulesdir))
-        
-        f.write("</script>\n</head>\n\n<body>\n") 
+""" % time.strftime("%a %b %d %Y %H:%M:%S %Z", start[0]))
         
         env = {}
-        for i,v in self.db.envselall():
+        for i,v in self.env_select():
             env[i] = v
         f.write(
 """\
@@ -268,23 +207,31 @@ swfobject.embedSWF("%s/amcolumn.swf", "meta", chartWidth, chartHeight, swfVersio
         
         f.write(
 """\
-<!-- Chart: meta -->
 <p align="left"><font size="3" face="Arial"><b><i>Metadata Performance</i></b></font></p>
-<div id="meta"></div>
 """)
+        # Generate chart url
+        labels = []
+        data = []
+        for opname,thpt in self.meta_select("oper,throughput"):
+            labels.append(opname)
+            data.append(thpt)
         
+        chart = gchart.BarChart()
+        chart.adddataseries(0, data)
+        chart.addlabelseries(0, labels)
+        chart.setdata()
+        chart.setlabels()
+        f.write(chart.html() + "\n")
+
         f.flush()
         os.fsync(f.fileno())
         f.write(
 """\
 <p><i>took %s seconds to generate this report.</i></p>
-<p align="right"><font size="1" face="Arial">
-<a href="http://www.adobe.com/go/getflashplayer">
-Get Adobe Flash Player</a></font></p>
-
 </body>
 </html>
 """ % (timer()-start[1]))
         
         f.close()
-        ws("\nHTML report has been written to %s/report.html.\n" % self.home)
+        ws("Benchmarking report has been written to %s/report.html.\n"
+           "Please use your browser to view it.\n" % self.dbhome)
