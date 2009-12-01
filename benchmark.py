@@ -1,5 +1,5 @@
 #############################################################################
-# ParaMark: High Fidelity Parallel File System Benchmark
+# ParaMark:  A Parallel/Distributed File Systems Benchmark
 # Copyright (C) 2009  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -40,14 +40,49 @@ class TestSet:
         self.ops = []   # list of operations to perform
         self.dat = []   # raw output from oplist
     
-class Benchmark:
+class Benchmark(FileSystemOperation):
     """
     Benchmark base class, which includes common runtime variables
     and utilties.
     """
     def __init__(self, opts=None, **kw):
+        FileSystemOperation.__init__(self)
+
+        # Filesystem operation parameters, configurable via options
+        self.flags = {}
+        self.flags["creat"] = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        self.flags["open"] = os.O_RDONLY
+        self.flags["open_close"] = os.O_RDONLY
+        self.flags["read"] = os.O_RDONLY
+        self.flags["reread"] = os.O_RDONLY
+        self.flags["write"] = flags=os.O_CREAT | os.O_RDWR
+        self.flags["rewrite"] = flags=os.O_CREAT | os.O_RDWR
+        self.flags["fread"] = 'r'
+        self.flags["freread"] = 'r'
+        self.flags["fwrite"] = 'r'
+        self.flags["frewrite"] = 'r'
+        self.flags["offsetread"] = os.O_RDONLY
+        self.flags["offsetwrite"] = os.O_CREAT | os.O_RDWR
+        
+        self.mode = {}
+        self.mode["creat"] = 0600
+        self.mode["access"] = os.F_OK
+        self.mode["chmod"] = stat.S_IEXEC
+        self.mode["write"] = 0600
+        self.mode["rewrite"] = 0600
+        
+        self.fsync = {}
+        self.fsync["write"] = False
+        self.fsync["rewrite"] = Falses
+        
+        self.byte = {}  # bytes content to be written to file
+
+        self.dist = {}  # access distribution
+        self.dist["offsetread"] = ("normal", None)
+        self.dist["offsetwrite"] = ("normal", None)
+
         # configurable variables
-        self.mode = None
+        self.runmode = None
         self.nproc = 1
         self.fsizerange = None
         self.blksizerange = None
@@ -67,14 +102,15 @@ class Benchmark:
         
         self.dryrun = False
         self.verbosity = 0
+        self.verbose = {}
+        self.verbose["oper"] = False
     
         _Benchmark_restrict = ["mode", "nproc", "fsizerange", 
             "blksizerange", "opcntrange", "factorrange", 
             "metaops", "ioops", "shuffle",
             "round", "sleep", "keep", "reportdir", "reportsmartsize", 
             "dryrun", "verbosity"]
-        update_opts_kw(self.__dict__, _Benchmark_restrict, 
-            opts, kw)
+        update_opts_kw(self.__dict__, _Benchmark_restrict, opts, kw)
         
         # 
         # Following variables will not updated by opts or **kw
@@ -100,12 +136,16 @@ class Benchmark:
         # Post initialization
         self.ensuredir(os.path.dirname(self.reportdir))
 
-        if self.mode in ["auto", "io"]:
+        if self.runmode in ["auto", "io"]:
             self.tests.extend(self.gen_io_tests())
-        if self.mode in ["auto", "meta"]:
+        if self.runmode in ["auto", "meta"]:
             self.tests.extend(self.gen_meta_tests())
-    
-    def verbose(self, msg):
+
+        if self.syncio:
+            self.flags["read"] |= os.O_RSYNC
+            self.flags["write"] |= os.O_SYNC
+
+    def vs(self, msg):
         self.ws("[%9s#%5d:%05d] %s\n" % 
             (self.hostname, self.pid, self.verbosecnt, msg))
         self.verbosecnt += 1
@@ -132,6 +172,75 @@ class Benchmark:
         if tempdir is None:
             tempdir = self.tempdir
         shutil.rmtree(tempdir)
+
+    def exec_oper(self, oper):
+        """Execute one operation by its name"""
+        verbose = self.verbose["oper"]
+        dryrun = self.dryrun
+        # Metadata Operation
+        if oper == "mkdir":
+            return self.mkdir(self.dirs, verbose, dryrun)
+        if oper == "rmdir":
+            return self.rmdir(self.dirs, verbose, dryrun)
+        if oper == "creat":
+            return self.creat(self.files, self.flags[oper], self.mode[oper], 
+                verbose, dryrun)
+        if oper == "access":
+            return self.access(self.files, self.flags[oper], verbose, dryrun)
+        if oper == "open":
+            return self.open(self.files, self.flags[oper], verbose, dryrun)
+        if oper == "open_close":
+            return self.open_close(self.files, self.flags[oper], verbose, 
+                dryrun)
+        if oper == "stat":
+            return self.stat_exist(self.files, verbose, dryrun)
+        if oper == "stat_non":
+            return self.stat_non(self.files, verbose, dryrun)
+        if oper == "utime":
+            return self.utime(self.files, verbose, dryrun)
+        if oper == "chmod":
+            return self.chmod(self.files, self.mode["oper"], verbose, dryrun)
+        if oper == "rename":
+            return self.rename(self.files, verbose, dryrun)
+        if oper == "unlink":
+            return self.unlink(self.files, verbose, dryrun)
+
+        # I/O Operation
+        file = self.file
+        fsize = self.fsize
+        blksize = self.blksize
+        if oper == "read":
+            return self.read(file, fsize, blksize, self.flags[oper], 
+                verbose, dryrun)
+        if oper == "reread":
+            return self.reread(file, fsize, blksize, self.flags[oper], 
+                verbose, dryrun)
+        if oper == "write":
+            return self.write(file, fsize, blksize, self.flags[oper], 
+                self.mode[oper], self.byte[oper], self.fsync[oper], verbose,
+                dryrun)
+        if oper == "rewrite":
+            return self.rewrite(file, fsize, blksize, self.flags[oper],
+                self.mode[oper], self.byte[oper], self.fsync[oper], verbose, 
+                dryrun)
+        if oper == "fread":
+            return self.fread(file, fsize, blksize, self.flags[oper],
+                verbose, dryrun)
+        if oper == "freread":
+            return self.freread(file, fsize, blksize, self.flags[oper],
+                verbose, dryrun)
+        if oper == "fwrite":
+            return self.fwrite(file, fsize, blksize, self.flags[oper],
+                self.byte[oper], self.fsync[oper], verbose, dryrun)
+        if oper == "frewrite":
+            return self.frewrite(file, fsize, blksize, self.flags[oper],
+                self.byte[oper], self.fsync[oper], verbose, dryrun)
+        if oper == "offsetread":
+            return self.offsetread(file, fsize, blksize, self.flags[oper],
+                self.dist[oper], verbose, dryrun)
+        if oper == "offsetwrite":
+            return self.offsetwrite(file, fsize, blksize, self.flags[oper],
+                self.byte[oper], self.dist[oper], verbose, dryrun)
 
     def gen_io_tests(self, nproc=None, fsizerange=None, 
         blksizerange=None, ioops=None):
@@ -272,7 +381,7 @@ See paramark -h for more help.
         self.env_insert("uid", "%s" % self.uid)
         self.env_insert("command", self.cmdline)
         self.env_insert("working directory", self.wdir)
-        self.env_insert("mode", self.mode)
+        self.env_insert("mode", self.runmode)
         self.commit_data()
     
     def store_result(self, tests=None):
@@ -299,7 +408,3 @@ See paramark -h for more help.
                     self.io_insert(row)
 
         self.commit_data()
-        
-class ParallelBenchmark:
-    def __init__(self):
-        return

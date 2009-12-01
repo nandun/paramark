@@ -1,6 +1,6 @@
 #############################################################################
-# ParaMark: High Fidelity Parallel File System Benchmark
-# Copyright (C) 2009  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
+# ParaMark:  A Parallel/Distributed File Systems Benchmark
+# Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,11 +17,11 @@
 #############################################################################
 
 #
-# File System Operation Primitives
-#   * Workload synthetic
-#   * File I/O and metadata operations
-#   * File data distribution
+# File system operation primitives
 #
+
+# Implementation remarks
+#  * Interfaces of operation primitives should be ketp as small as possbile
 
 import os
 import sys
@@ -30,992 +30,565 @@ import random
 
 from common import *
 
-__all__ = ["FileSystemOperation"]
-
-class FileSystemOperation:
+class MetaOper:
     """
-    File system operation:
-        * Workload synthetic
-        * File system I/O and metadata primitives
+    Filesystem metadata operations
+    
+    Primitives to conduct a filesystem metadata operation
+    Input: a list of files to be manipulated on
+    Output: operation name and a list of pairs of operation start and end time
     """
-    def __init__(self, opts=None, **kw):
-        # configuration by opts or **kw
-        self.wdir = None    # working directory
-        
-        self.opcnt = None   # meta operation count
-        self.factor = None
-        self.fsize = None
-        self.blksize = None
-        self.syncio= False
-        self.fsync = False
-        self.opentime = True
-        self.closetime = True
-        
-        self.dryrun = False
-        self.verbosity = 0
+    def vs(self, msg):
+        """verbose output"""
+        sys.stout.write("\n" % msg)
 
-        _FileSystemOperation_restrict = ["wdir", "opcnt", "factor", "fsize",
-            "blksize", "syncio", "fsync", "opentime", "closetime", "dryrun",
-            "verbosity"]
-        update_opts_kw(self.__dict__, _FileSystemOperation_restrict,
-            opts, kw)
+    def mkdir(self, dirs, verbose=False, dryrun=False):
+        """make a list of directories by os.mkdir()"""
+        if verbose:
+            for dir in dirs: self.vs("os.mkdir(%s)" % dir)
+        if dryrun: return None
         
-        # workload files and dirs
-        self.tempdir = None
-        self.file = None
-        self.files = None
-        self.dir = None
-        self.dirs = None
-
-        # read-only variables
-        self.op = {}
-        self.op["mkdir"] = self.mkdir
-        self.op["rmdir"] = self.rmdir
-        self.op["creat"] = self.creat
-        self.op["access"] = self.access
-        self.op["open"] = self.open
-        self.op["open+close"] = self.open_close
-        self.op["stat"] = self.stat
-        self.op["stat_NONEXIST"] = self.stat_non
-        self.op["utime"] = self.utime
-        self.op["chmod"] = self.chmod
-        self.op["rename"] = self.rename
-        self.op["unlink"] = self.unlink
-        self.op["read"] = self.read
-        self.op["reread"] = self.reread
-        self.op["write"] = self.write
-        self.op["rewrite"] = self.rewrite
-        self.op["fread"] = self.fread
-        self.op["freread"] = self.freread
-        self.op["fwrite"] = self.fwrite
-        self.op["frewrite"] = self.frewrite
-        self.op["randread"] = self.randread
-        self.op["randwrite"] = self.randwrite
-        
-        # verbose
-        self.verbosecnt = 0
-        
-        # stream
-        self.ws = sys.stdout.write
-        self.es = sys.stderr.write
-        
-        random.seed()
-
-    # verbose routines
-    def verbose(self, msg):
-        self.ws("[%05d] %s\n" % (self.verbosecnt, msg))
-        self.verbosecnt += 1
-    
-    # 
-    # Workload Generation
-    #
-    def gen_tempdir(self, prefix):
-        self.tempdir = "%s/%s-%03d" % \
-            (self.wdir, prefix, random.randint(0, 999))
-        return self.tempdir
-    
-    def gen_dirs(self, num, factor=16):
-        assert num > 0
-        self.dirs = []
-        queue = [ self.tempdir ]
-        i = l = 0
-        while i < num:
-            if i % factor == 0:
-                parent = queue.pop(0)
-                l = l + 1
-            child = "%s/L%d-%d" % (parent, l, i)
-            self.dirs.append(child)
-            queue.append(child)
-            i = i + 1
-
-        self.dir = self.dirs[0]
-        return self.dirs
-    
-    def gen_files(self, num):
-        assert num > 0
-        self.files = []
-        for i in range(0, num): 
-            self.files.append("%s/%d.dat" % (self.tempdir, i))
-
-        self.file = self.files[0]
-        return self.files
-    
-    def shuffle_files_and_dirs(self, shuffle="random", round=1):
-        if self.dirs is not None:
-            if shuffle == "random":
-                random.shuffle(self.dirs)
-            elif shuffle == "round":
-                for i in range(0, round):
-                    self.dirs.append(self.dirs.pop(0))
-            self.dir = self.dirs[0]
-        
-        if self.files is not None:
-            if shuffle == "random":
-                random.shuffle(self.files)
-            elif shuffle == "round":
-                for i in range(0, round):
-                    self.files.append(self.files.pop(0))
-            self.file = self.files[0]
-
-        return (self.dir, self.dirs, self.file, self.files)
-    
-    # 
-    # I/O and metadata primitives
-    #
-    # arguments are optional, this is useful for opList
-    # return a 7-tuple
-    # (opName, opCount, minopTime, maxopTime, elapsedTime, startTime, endTime)
-    #
-    def mkdir(self, dirs=None):
-        """mkdir""" # special purpose, do not modify
-        minop = INTEGER_MAX 
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-        
-        if dirs is None:
-            dirs = self.dirs
-
-        if self.verbosity >= VERBOSE_INFO:
-            for dir in dirs:
-                self.verbose("mkdir: os.mkdir(%s)" % dir)
-        if self.dryrun:
-            return None
-        
-        start = timer()
+        res = []
         for dir in dirs:
-            optick = timer()
+            s = timer()
             os.mkdir(dir)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
         
-        assert opcnt == len(dirs)
-        return ('mkdir', opcnt, minop, maxop, elapsed, start, end)
-
-    def rmdir(self, dirs=None):
-        """rmdir""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+        assert len(res) == len(dirs)
+        return ("mkdir", res)
+    
+    def rmdir(self, dirs, verbose=False, dryrun=False):
+        """remove a list of directories by os.rmdir()"""
+        if verbose:
+            for dir in dirs: self.vs("os.rmdir(%s)" % dir)
+        if dryrun: return None
         
-        if dirs is None:
-            dirs = list(self.dirs)
-            dirs.reverse()
-        
-        if self.verbosity >= VERBOSE_INFO:
-            for dir in dirs:
-                self.verbose("rmdir: os.rmdir(%s)" % dir)
-        if self.dryrun:
-            return None
-        
-        start = timer()
+        res = []
         for dir in dirs:
-            optick = timer()
+            s = timer()
             os.rmdir(dir)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
         
-        assert opcnt == len(dirs)
-        return ('rmdir', opcnt, minop, maxop, elapsed, start, end)
-
-    def creat(self, files=None, flags=None, mode=0600):
-        """creat""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+        assert len(res) == len(dirs)
+        return ('rmdir', res)
     
-        if files is None:
-            files = self.files
-        if flags is None:
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        
-        if self.verbosity >=  VERBOSE_INFO:
+    def creat(self, files, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 
+        mode=0600, verbose=False, dryrun=False):
+        """create a list of files by os.open() and os.close() pairs"""
+    
+        if verbose:
             for file in files:
-                self.verbose("creat: os.open(%s, 0x%x, 0x%x)"
-                             % (file, flags, mode))
-        if self.dryrun:
-            return None
+                self.vs("os.close(os.open(%s, 0x%x, 0x%x))" 
+                    % (file, flags, mode))
+        if dryrun: return None
         
-        start = timer()
+        res = []
         for file in files:
-            optick = timer()
-            fd = os.open(file, flags, mode)
-            os.close(fd)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            s = timer()
+            os.close(os.open(file, flags, mode))
+            res.append((s,timer()))
 
-        if self.dryrun:
-            return None
+        assert len(res) == len(files)
+        return ('creat', res) 
+    
+    def access(self, files, mode=os.F_OK, verbose=False, dryrun=False):
+        """access a list of files by os.access()"""
         
-        assert opcnt == len(files)
-        return ('creat', opcnt, minop, maxop, elapsed, start, end) 
-
-    def access(self, files=None, mode=None):
-        """access""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-        
-        if files is None:
-            files = self.files
-        if mode is None:
-            mode = os.F_OK
-
-        if self.verbosity >= VERBOSE_INFO:
+        if verbose:
             for file in files:
-                self.verbose("access: os.access(%s, 0x%x)" % (file, mode))
-        if self.dryrun:
-            return None
+                self.vs("os.access(%s, 0x%x)" % (file, mode))
+        if dryrun: return None
         
-        start = timer()
+        res = []
         for file in files:
-            optick = timer()
+            s = timer()
             ret = os.access(file, mode)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
         
-        assert opcnt == len(files)
-        return ('access', opcnt, minop, maxop, elapsed, start, end) 
-
-    def open(self, files=None, flags=None):
-        """open""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-        
-        if files is None:
-            files = self.files
-        if flags is None:
-            flags = os.O_RDONLY
-
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("open: os.open(%s, 0x%x)" % (file, flags))
-        if self.dryrun:
-            return None
-
-        start = timer()
-        for file in files:
-            optick = timer()
-            fd = os.open(file, flags)
-            optick = timer() - optick
-            os.close(fd)
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        
-        assert opcnt == len(files)
-        return ('open', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('access', res) 
     
-    def open_close(self, files=None, flags=None):
-        """open+close""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def open(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False):
+        """open a list of files by os.open()"""
         
-        if files is None:
-            files = self.files
-        if flags is None:
-            flags = os.O_RDONLY
-
-        if self.verbosity >= VERBOSE_INFO:
+        if verbose:
             for file in files:
-                self.verbose("open+close: os.open(%s, 0x%x)" % (file, flags))
-        if self.dryrun:
-            return None
+                self.vs("os.open(%s, 0x%x)" % (file, flags))
+        if dryrun: return None
+        
+        res = []
+        for file in files:
+            s = timer()
+            fd = os.open(file, flags)
+            res.append((s,timer()))
+            os.close(fd)
+        
+        assert len(res) == len(files)
+        return ('open', res) 
+    
+    def open_close(self, files, flags=os.O_RDONLY, verbose=False,
+        dryrun=False):
+        """access a list of files by os.open() and os.close() pairs"""
+
+        if verbose:
+            for file in files:
+                self.vs("os.close(os.open(%s, 0x%x))" % (file, flags))
+        if dryrun: return None
             
-        start = timer()
+        res = []
         for file in files:
-            optick = timer()
-            fd = os.open(file, flags)
-            os.close(fd)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            s = timer()
+            os.close(os.open(file, flags))
+            res.append((s, timer()))
         
-        assert opcnt == len(files)
-        return ('open+close', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('open+close', res) 
     
-    def stat(self, files=None):
-        """stat""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def stat_exist(self, files, verbose=False, dryrun=False):
+        """access a list of files by os.stat()"""
         
-        if files is None:
-            files = self.files
-
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("stat: os.stat(%s)" % file)
-        if self.dryrun:
-            return None
+        if verbose:
+            for file in files: self.vs("os.stat(%s)" % file)
+        if dryrun: return None
         
-        start = timer()
+        res = []
         for file in files:
-            optick = timer()
+            s = timer()
             os.stat(file)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s, timer()))
 
-        assert opcnt == len(files)
-        return ('stat', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('stat_exist', res) 
     
-    def stat_non(self, files=None):
-        """stat_NONEXIST""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def stat_non(self, files, verbose=False, dryrun=False):
+        """access a list of NON-EXIST files by os.stat()"""
         
-        if files is None:
-            files = map(lambda f:f+'n', self.files)
+        nfiles = map(lambda f:f+'n', files)
+        if verbose:
+            for file in nfiles: self.vs("os.stat(%s)" % file)
+        if dryrun: return None
+        
+        res = []
+        for file in nfiles:
+            s = timer()
+            try: os.stat(file)
+            except: pass
+            res.append((s,timer()))
 
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("stat_non: os.stat(%s)" % file)
-        if self.dryrun:
-            return None
-
-        start = timer()
+        assert len(res) == len(nfiles)
+        return ('stat_NONEXIST', res) 
+        
+    def utime(self, files, times=None, verbose=False, dryrun=False):
+        """access a list of files by os.utime()"""
+        
+        if verbose:
+            for file in files: self.vs("os.utime(%s, %s)" % (file, times))
+        if dryrun: return None
+        
+        res = []
         for file in files:
-            optick = timer()
-            try:
-                os.stat(file)
-            except:
-                pass
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-
-        assert opcnt == len(files)
-        return ('stat_NONEXIST', opcnt, minop, maxop, elapsed, start, end) 
-        
-    def utime(self, files=None, times=None):
-        """utime""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-        
-        if files is None:
-            files = self.files
-
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("utime: os.utime(%s, %s)" % (file, times))
-        if self.dryrun:
-            return None
-        
-        start = timer()
-        for file in files:
-            optick = timer()
+            s = timer()
             os.utime(file, times)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer() 
+            res.append((s, timer()))
         
-        assert opcnt == len(files)
-        return ('utime', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('utime', res) 
         
-    def chmod(self, files=None, mode=None):
-        """chmod""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def chmod(self, files, mode=stat.S_IEXEC, verbose=False, dryrun=False):
+        """access a list of files by os.chmod()"""
         
-        if files is None:
-            files = self.files
-        if mode is None:
-            mode = stat.S_IEXEC
-
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("chmod: os.chmod(%s, 0x%x)" % (file, mode))
-        if self.dryrun:
-            return None
-            
-        start = timer()
+        if verbose:
+            for file in files: self.vs("os.chmod(%s, 0x%x)" % (file, mode))
+        if dryrun: return None
+           
+        res = []
         for file in files:
-            optick = timer()
+            s = timer()
             os.chmod(file, mode)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed  += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
 
-        assert opcnt == len(files)
-        return ('chmod', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('chmod', res) 
         
-    def rename(self, files=None):
-        """rename""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def rename(self, files, verbose=False, dryrun=False):
+        """access a list of files by os.rename()"""
         
-        if files is None:
-            files = self.files
-        if self.verbosity >= VERBOSE_INFO:
+        if verbose:
             for file in files:
-                self.verbose("rename: os.rename(%s, %s.to)" % (file, file))
-        if self.dryrun:
-            return None
-
-        start = timer()
+                self.vs("os.rename(%s, %s.to)" % (file, file))
+        if dryrun: return None
+        
+        res = []
         for file in files:
             tofile = file + ".to"
-            optick = timer()
+            s = timer()
             os.rename(file, tofile)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        assert opcnt == len(files)
+            res.append((s,timer()))
+        assert len(res) == len(files)
         
         # rename back
         for file in files:
             tofile = file + ".to"
-            if self.verbosity >= VERBOSE_DETAILS:
-                self.verbose("rename_back: os.rename(%s, %s)" % 
-                             (tofile, file))
+            if verbose: self.vs("os.rename(%s, %s) back" % (tofile, file))
             os.rename(tofile, file)
 
-        return ('rename', opcnt, minop, maxop, elapsed, start, end) 
+        return ('rename', res) 
 
-    def unlink(self, files=None):
-        """unlink""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def unlink(self, files, verbose=False, dryrun=False):
+        """unlink a list of files by os.unlink()"""
         
-        if files is None:
-            files = self.files
-
-        if self.verbosity >= VERBOSE_INFO:
-            for file in files:
-                self.verbose("unlink: os.unlink(%s)" % file)
-        if self.dryrun:
-            return None
+        if verbose:
+            for file in files: self.vs("os.unlink(%s)" % file)
+        if dryrun: return None
         
-        start = timer()
+        res = []
         for file in files:
-            optick = timer()
+            s = timer()
             os.unlink(file)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
         
-        assert opcnt == len(files)
-        return ('unlink', opcnt, minop, maxop, elapsed, start, end) 
+        assert len(res) == len(files)
+        return ('unlink', res) 
 
-    def read(self, file=None, flags=None, fsize=None, blksize=None):
-        """read""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_RDONLY
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+class IOOper:
+    """
+    Filesystem input/output operations
     
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("read: os.read(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
+    Primitives to conduct a filesystem I/O operation
+    Input: a file to be manipulated on
+    Output: operation name and a list of pairs of operation start and end time
+    """
+    def __init__(self):
+        random.seed() # For offsetread/write
 
-        start = timer()
+    def vs(self, msg):
+        """verbose output"""
+        sys.stout.write("\n" % msg)
+    
+    def read(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False,
+        dryrun=False):
+        """read a file by os.read() with give parameters"""
+        
+        if verbose:
+            self.vs("os.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
+        
+        # Be careful!
+        # The first record is open time and the last record is close time
+        res = []
+        ret = 1
+        s = timer()
         fd = os.open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while ret:
+            s = timer()
             ret = os.read(fd, blksize)
-            optick = timer() - optick
-            assert len(ret) == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
+            #assert len(ret) == blksize
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('read', opcnt, minop, maxop, elapsed, start, end)
-
-    def reread(self, file=None, flags=None, fsize=None, blksize=None):
-        """reread""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
-
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_RDONLY
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        return ('read', res)
     
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("reread: os.read(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
+    def reread(self, file, fsize, blksize, flags=os.O_RDONLY, verbose, dryrun):
+        """re-read a file by os.read() with given parameters"""
 
-        start = timer()
+        if verbose:
+            self.vs("os.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
+
+        res = []
+        ret = 1
+        s = timer()
         fd = os.open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        t = timer()
+        res.append((s,t))
+        while ret:
+            s = timer()
             ret = os.read(fd, blksize)
-            optick = timer() - optick
-            assert len(ret) == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
+            #assert len(ret) == blksize
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('reread', opcnt, minop, maxop, elapsed, start, end)
+        return ('reread', res)
     
-    def write(self, file=None, flags=None, mode=0600, fsize=None, blksize=None):
-        """write""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def write(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+        mode=0600, byte='0', fsync=False, verbose=False, dryrun=False):
+        """write a file by os.write() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_CREAT | os.O_RDWR
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose:
+            self.vs("os.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("write: os.write(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        block = '0' * blksize
-        start = timer()
+        block = byte * blksize
+        writebytes = 0
+        res = []
+        s = timer()
         fd = os.open(file, flags, mode)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while writebytes < fsize:
+            s = timer()
             ret = os.write(fd, block)
-            optick = timer() - optick
+            res.append((s,timer()))
             assert ret == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        if self.fsync:
+            writebytes += ret
+        if fsync:
+            s = timer()
             os.fsync(fd)
-            elapsed += timer() - end
-            end = timer()
+            res.append((s,timer()))
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('write', opcnt, minop, maxop, elapsed, start, end)
+        return ('write', res)
     
-    def rewrite(self, file=None, flags=None, mode=0600, fsize=None, blksize=None):
-        """rewrite""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def rewrite(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+        mode=0600, byte='1', fsync=False, verbose=False, dryrun=False):
+        """re-write a file by os.write() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_CREAT | os.O_RDWR
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose:
+            self.vs("os.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("rewrite: os.write(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        block = '1' * blksize
-        start = timer()
+        block = byte * blksize
+        writebytes = 0
+        res = []
+        s = timer()
         fd = os.open(file, flags, mode)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while writebytes < fsize:
+            s = timer()
             ret = os.write(fd, block)
-            optick = timer() - optick
+            res.append((s,timer()))
             assert ret == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        if self.fsync:
+            writebytes += ret
+        if fsync:
+            s = timer()
             os.fsync(fd)
-            elapsed += timer() - end
-            end = timer()
+            res.append((s,timer()))
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('rewrite', opcnt, minop, maxop, elapsed, start, end)
+        return ('rewrite', res)
     
-    def fread(self, file=None, flags='r', fsize=None, blksize=None):
-        """fread""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def fread(self, file, fsize, blksize, flags='r', verbose=False,
+        dryrun=False):
+        """read a file by f.read() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose >= VERBOSE_INFO:
+            self.vs("f.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("fread: f.read(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        start = timer()
+        res = []
+        ret = 1
+        s = timer()
         f = open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while ret:
+            s = timer()
             ret = f.read(blksize)
-            optick = timer() - optick
-            assert len(ret) == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
+            res.append((s,timer()))
+            #assert len(ret) == blksize
+        s = timer()
         f.close()
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('fread', opcnt, minop, maxop, elapsed, start, end)
+        return ('fread', res)
     
-    def freread(self, file=None, flags='r', fsize=None, blksize=None):
-        """freread""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def freread(self, file, fsize, blksize, flags='r', verbose=False,
+        dryrun=False):
+        """read a file by f.read() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose:
+            self.vs("f.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("freread: f.read(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        start = timer()
+        res = []
+        ret = 1
+        s = timer()
         f = open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while ret:
+            s = timer()
             ret = f.read(blksize)
-            optick = timer() - optick
-            assert len(ret) == blksize
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
+            res.append((s,timer()))
+            #assert len(ret) == blksize
             opcnt += 1
-        end = timer()
+        s = timer()
         f.close()
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('freread', opcnt, minop, maxop, elapsed, start, end)
+        return ('freread', res)
 
-    def fwrite(self, file=None, flags='w', fsize=None, blksize=None):
-        """fwrite""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def fwrite(self, file, fsize, blksize, flags='w', byte='2', fsync=False,
+        verbose=False, dryrun=False):
+        """write a file by f.write() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose:
+            self.vs("f.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("fwrite: f.write(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        block = '2' * blksize
-        start = timer()
+        block = byte * blksize
+        writebytes = 0
+        res = []
+        s = timer()
         f = open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while writebytes < fsize:
+            s = timer()
             f.write(block)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        if self.fsync:
+            res.append((s,timer()))
+            assert ret == blksize
+            writebytes += ret
+        if fsync:
+            s = timer()
             f.flush()
             os.fsync(f.fileno())
-            elapsed += timer() - end
-            end = timer()
+            res.append((s,timer()))
+        s = timer()
         f.close()
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('fwrite', opcnt, minop, maxop, elapsed, start, end)
+        return ('fwrite', res) 
     
-    def frewrite(self, file=None, flags='w', fsize=None, blksize=None):
-        """frewrite""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def frewrite(self, file, fsize, blksize, flags='w', byte='3', fsync=False,
+        verbose=False, dryrun=False):
+        """re-write a file by f.write() with given parameters"""
         
-        if file is None:
-            file = self.file
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
+        if verbose:
+            self.vs("f.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
+        if dryrun: return None
         
-        if self.verbosity >= VERBOSE_INFO:
-            self.verbose("frewrite: f.write(%s, %d) * %d" %
-                (file, blksize, fsize/blksize))
-        if self.dryrun:
-            return None
-        
-        block = '3' * blksize
-        start = timer()
+        block = byte * blksize
+        writebytes = 0
+        res = []
+        s = timer()
         f = open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
-        while opcnt * blksize < fsize:
-            optick = timer()
+        res.append((s,timer()))
+        while writebytes < fsize:
+            s = timer()
             f.write(block)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-            opcnt += 1
-        end = timer()
-        if self.fsync:
+            res.append((s,timer()))
+            assert ret == blksize
+            writebytes += ret
+        if fsync:
+            s = timer()
             f.flush()
             os.fsync(f.fileno())
-            elapsed += timer() - end
-            end = timer()
+            res.append((s,timer()))
+        s = timer()
         f.close()
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('frewrite', opcnt, minop, maxop, elapsed, start, end)
+        return ('frewrite', res)
 
-    def randread(self, file=None, flags=None, fsize=None, blksize=None):
-        """randread""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def offsetread(self, file, fsize, blksize, flags=os.O_RDONLY, 
+        dist=None, verbose=False, dryrun=False):
+        """Read a file by os.read() with offsets in a certain distribution
         
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_CREAT | os.O_RDONLY
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
-    
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
+        dist -- a tuple (dist_name, dist_mu, dist_sigma)
+        """
+
+        # Generate distribution
         randwalk = []
-        while opcnt * blksize < fsize:
-            randwalk.append(random.randint(0, fsize))
-            opcnt += 1
+        opcnt = fsize / blksize
+        if dist is None or dist[0] == "random":
+            for i in range(0, opcnt):
+                offset = random.randint(0, fsize)
+                assert offset > 0 and offset < fsize
+                randwalk.append(offset)
+        elif dist[0] == "normal":
+            dist_name, dist_mu, dist_sigma = dist
+            # TODO: Calculate mu and sigma
+            # if mu is None: mu = 
+            # if sigma is None: sigma = 
+            for i in range(0, opcnt):
+                offset = int(round(normalvariate(mu, sigma)))
+                assert offset > 0 and offset < fsize
+                randwalk.append(offset)
         
-        if self.verbosity >= VERBOSE_INFO and self.verbosity < VERBOSE_DETAILS:
-            self.verbose("randread: os.lseek->os.read(%s, %d) * %d" %
-                    (file, blksize, fsize/blksize))
-        
-        if self.verbosity >= VERBOSE_DETAILS:
+        if verbose:
             for offset in randwalk:
-                self.verbose("randread: os.lseek(%s, %d, os.SEEK_SET)\n" %
-                    (file, offset))
-                self.verbose("randread: os.read(%s, %d) * %d" %
-                    (file, blksize, fsize/blksize))
+                self.verbose("os.read(%s, %d) * %d at %d" %
+                    (file, blksize, fsize/blksize), offset)
+        if dryrun: return None
         
-        if self.dryrun:
-            return None
-        
-        start = timer()
+        res = []
+        s = timer()
         fd = os.open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
+        res.append((s,timer()))
         for offset in randwalk:
-            optick = timer()
-            # os.lseek(fd, offset, os.SEEK_SET)
-            os.lseek(fd, offset, 0) # back compatibility
+            s = timer()
+            os.lseek(fd, offset, os.SEEK_SET)
             ret = os.read(fd, blksize)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-        end = timer()
+            res.append((s,timer()))
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('randread', opcnt, minop, maxop, elapsed, start, end)
+        return ('offsetread', res)
     
-    def randwrite(self, file=None, flags=None, fsize=None, blksize=None):
-        """randwrite""" # special purpose, do not modify
-        minop = INTEGER_MAX
-        maxop = INTEGER_MIN
-        elapsed = opcnt = 0
+    def offsetwrite(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+        byte='4', dist=None, verbose=False, dryrun=False):
+        """write a file by os.write() with offsets in a certain distribution"""
         
-        if file is None:
-            file = self.file
-        if flags is None:
-            flags = os.O_CREAT | os.O_RDWR
-        if fsize is None:
-            fsize = self.fsize
-        if blksize is None:
-            blksize = self.blksize
-    
-        if self.syncio:
-            flags = flags | os.O_SYNC
-        
+        # Generate distribution
         randwalk = []
-        while opcnt * blksize < fsize:
-            randwalk.append(random.randint(0, fsize))
-            opcnt += 1
+        opcnt = fsize / blksize
+        if dist is None or dist[0] == "random":
+            for i in range(0, opcnt):
+                offset = random.randint(0, fsize)
+                assert offset > 0 and offset < fsize
+                randwalk.append(offset)
+        elif dist[0] == "normal":
+            dist_name, dist_mu, dist_sigma = dist
+            # TODO: Calculate mu and sigma
+            # if mu is None: mu = 
+            # if sigma is None: sigma = 
+            for i in range(0, opcnt):
+                offset = int(round(normalvariate(mu, sigma)))
+                assert offset > 0 and offset < fsize
+                randwalk.append(offset)
         
-        if self.verbosity >= VERBOSE_INFO and self.verbosity < VERBOSE_DETAILS:
-            self.verbose("randwrite: os.lseek->os.write(%s, %d) * %d" %
-                    (file, blksize, fsize/blksize))
-        
-        if self.verbosity >= VERBOSE_DETAILS:
+        if verbose:
             for offset in randwalk:
-                self.verbose("randwrite: os.lseek(%s, %d, os.SEEK_SET)\n" %
-                    (file, offset))
-                self.verbose("randwrite: os.write(%s, %d) * %d" %
-                    (file, blksize, fsize/blksize))
-        
-        if self.dryrun:
-            return None
+                self.verbose("os.write(%s, %d) * %d at %d" %
+                    (file, blksize, fsize/blksize), offset)
+        if dryrun: return None
 
-        block = '4' * blksize
-        start = timer()
+        block = byte * blksize
+        res = []
+        s = timer()
         fd = os.open(file, flags)
-        if self.opentime:
-            elapsed = timer() - start
+        res.append((s, timer()))
         for offset in randwalk:
-            optick = timer()
-            # os.lseek(fd, offset, os.SEEK_SET)
-            os.lseek(fd, offset, 0) # back compatibility
+            s = timer()
+            os.lseek(fd, offset, os.SEEK_SET)
             ret = os.write(fd, block)
-            optick = timer() - optick
-            minop = min(minop, optick)
-            maxop = max(maxop, optick)
-            elapsed += optick
-        end = timer()
+            res.append((s, timer()))
+        if fsync:
+            s = timer()
+            os.fsync(fd)
+            res.append((s,timer()))
+        s = timer()
         os.close(fd)
-        if self.closetime:
-            elapsed += timer() - end
-            end = timer()
+        res.append((s,timer()))
 
-        return ('randwrite', opcnt, minop, maxop, elapsed, start, end)
+        return ('offsetwrite', res)
+    
+class FileSystemOperation(MetaOper, IOOper):
+    def __init__(self):
+        IOOper.__init__(self)
+        
+        # verbose
+        self.verbosecnt = 0
+
+    # verbose routines
+    def vs(self, msg):
+        """overrided vs()"""
+        sys.stdout.write("[%05d] %s\n" % (self.verbosecnt, msg))
+        self.verbosecnt += 1
