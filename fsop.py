@@ -30,472 +30,572 @@ import random
 
 from common import *
 
-class MetaOper:
-    """
-    Filesystem metadata operations
-    
-    Primitives to conduct a filesystem metadata operation
-    Input: a list of files to be manipulated on
-    Output: operation name and a list of pairs of operation start and end time
-    """
-    def vs(self, msg):
-        """verbose output"""
-        sys.stout.write("\n" % msg)
+class metaop:
+    """Metadata operation base class"""
+    def __init__(self, name, verbose=False, dryrun=False):
+        self.name = name 
+        self.verbose = verbose
+        self.dryrun = dryrun
+        self.res = []
 
-    def mkdir(self, dirs, verbose=False, dryrun=False):
-        """make a list of directories by os.mkdir()"""
-        if verbose:
+    def vs(self, msg):
+        sys.stdout.write("%s\n" % msg)
+
+    def exec(self):
+        sys.stdout.write("nometaop\n")
+        return None
+
+class mkdir(metaop):
+    """make a list of directories by os.mkdir()"""
+    def __init__(self, dirs=None, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "mkdir", verbose, dryrun)
+        assert dirs is not None
+        self.dirs = dirs
+
+    def exec(self):
+        if self.verbose:
             for dir in dirs: self.vs("os.mkdir(%s)" % dir)
-        if dryrun: return None
+        if self.dryrun: return None
         
-        res = []
-        for dir in dirs:
+        for dir in self.dirs:
             s = timer()
             os.mkdir(dir)
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         
-        assert len(res) == len(dirs)
-        return ("mkdir", res)
-    
-    def rmdir(self, dirs, verbose=False, dryrun=False):
-        """remove a list of directories by os.rmdir()"""
-        if verbose:
+        assert len(self.res) == len(self.dirs)
+        return res
+        
+class rmdir(metaop):
+    """remove a list of directories by os.rmdir()"""
+    def __init__(self, dirs=None, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "rmdir", verbose, dryrun)
+        assert dirs is not None
+        self.dirs = dirs
+
+    def exec(self):
+        if self.verbose:
             for dir in dirs: self.vs("os.rmdir(%s)" % dir)
-        if dryrun: return None
+        if self.dryrun: return None
         
-        res = []
-        for dir in dirs:
+        for dir in self.dirs:
             s = timer()
             os.rmdir(dir)
-            res.append((s,timer()))
+            self.res.append((s,timer()))
         
-        assert len(res) == len(dirs)
-        return ('rmdir', res)
-    
-    def creat(self, files, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 
-        mode=0600, verbose=False, dryrun=False):
-        """create a list of files by os.open() and os.close() pairs"""
-    
-        if verbose:
-            for file in files:
-                self.vs("os.close(os.open(%s, 0x%x, 0x%x))" 
-                    % (file, flags, mode))
-        if dryrun: return None
-        
-        res = []
-        for file in files:
-            s = timer()
-            os.close(os.open(file, flags, mode))
-            res.append((s,timer()))
+        assert len(self.res) == len(self.dirs)
+        return self.res
 
-        assert len(res) == len(files)
-        return ('creat', res) 
+class creat(metaop):
+    """create a list of files by os.metaopen() and os.close() pairs"""
+    def __init__(self, files=None, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 
+        mode=0600, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "creat", verbose, dryrun)
+        assert files is not None
+        self.files = files
+        self.flags = flags
+        self.mode = mode
     
-    def access(self, files, mode=os.F_OK, verbose=False, dryrun=False):
-        """access a list of files by os.access()"""
+    def exec(self):
+        if self.verbose:
+            for file in files:
+                self.vs("os.close(os.metaopen(%s, 0x%x, 0x%x))" 
+                    % (file, flags, mode))
+        if self.dryrun: return None
         
-        if verbose:
+        for file in self.files:
+            s = timer()
+            os.close(os.metaopen(file, flags, mode))
+            self.res.append((s,timer()))
+
+        assert len(self.res) == len(self.files)
+        return self.res
+
+class access(metaop):
+    """access a list of files by os.access()"""
+    def __init__(self, files, mode=os.F_OK, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "access", verbose, dryrun)
+        assert files is not None
+        self.files = files
+        self.mode = mode
+
+    def exec(self):
+        if self.verbose:
             for file in files:
                 self.vs("os.access(%s, 0x%x)" % (file, mode))
-        if dryrun: return None
+        if self.dryrun: return None
         
-        res = []
         for file in files:
             s = timer()
             ret = os.access(file, mode)
-            res.append((s,timer()))
+            self.res.append((s,timer()))
         
-        assert len(res) == len(files)
-        return ('access', res) 
-    
-    def open(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False):
-        """open a list of files by os.open()"""
+        assert len(self.res) == len(self.files)
+        return self.res
+
+class metaopen(metaop):
+    """metaopen a list of files by os.metaopen()"""
+    def __init__(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False,
+        **kw):
+        metaop.__init__(self, "metaopen", verbose, dryrun)
+        assert files is not None
+        self.files = files
+        self.flags = flags
+
+    def exec(self):
+        if self.verbose:
+            for file in self.files:
+                self.vs("os.metaopen(%s, 0x%x)" % (file, flags))
+        if self.dryrun: return None
         
-        if verbose:
-            for file in files:
-                self.vs("os.open(%s, 0x%x)" % (file, flags))
-        if dryrun: return None
-        
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
-            fd = os.open(file, flags)
-            res.append((s,timer()))
+            fd = os.metaopen(file, flags)
+            self.res.append((s, timer()))
             os.close(fd)
         
-        assert len(res) == len(files)
-        return ('open', res) 
-    
-    def open_close(self, files, flags=os.O_RDONLY, verbose=False,
-        dryrun=False):
-        """access a list of files by os.open() and os.close() pairs"""
+        assert len(self.res) == len(self.files)
+        return self.res
 
-        if verbose:
-            for file in files:
-                self.vs("os.close(os.open(%s, 0x%x))" % (file, flags))
-        if dryrun: return None
+class metaopen_close(metaop):
+    """access a list of files by os.metaopen() and os.close() pairs"""
+    def __init__(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False,
+        **kw):
+        metaop.__init__(self, "metaopen_close", verbose, dryrun)
+        assert files is not None
+        self.files = files
+        self.flags = flags
+        
+        if self.verbose:
+            for file in self.files:
+                self.vs("os.close(os.metaopen(%s, 0x%x))" % (file, flags))
+        if self.dryrun: return None
             
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
-            os.close(os.open(file, flags))
-            res.append((s, timer()))
+            os.close(os.metaopen(file, flags))
+            self.res.append((s, timer()))
         
-        assert len(res) == len(files)
-        return ('open+close', res) 
-    
-    def stat_exist(self, files, verbose=False, dryrun=False):
-        """access a list of files by os.stat()"""
+        assert len(self.res) == len(self.files)
+        return self.res
+
+class stat_exist(metaop):
+    """access a list of files by os.stat()"""
+    def __init__(self, files, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "stat_exist", verbose, dryrun)
+        assert files is not None
+        self.files = files
+
+    def exec(self):
+        if self.verbose:
+            for file in self.files: self.vs("os.stat(%s)" % file)
+        if self.dryrun: return None
         
-        if verbose:
-            for file in files: self.vs("os.stat(%s)" % file)
-        if dryrun: return None
-        
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
             os.stat(file)
-            res.append((s, timer()))
+            self.res.append((s, timer()))
 
-        assert len(res) == len(files)
-        return ('stat_exist', res) 
-    
-    def stat_non(self, files, verbose=False, dryrun=False):
-        """access a list of NON-EXIST files by os.stat()"""
-        
-        nfiles = map(lambda f:f+'n', files)
-        if verbose:
+        assert len(self.res) == len(self.files)
+        return self.res 
+
+class stat_non(metaop):
+    """access a list of NON-EXIST files by os.stat()"""
+    def __init__(self, files, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "stat_non", verbose, dryrun)
+        assert files is non None
+        self.files = files
+
+    def exec(self):
+        nfiles = map(lambda f:f+'n', self.files)
+        if self.verbose:
             for file in nfiles: self.vs("os.stat(%s)" % file)
-        if dryrun: return None
+        if self.dryrun: return None
         
-        res = []
         for file in nfiles:
             s = timer()
             try: os.stat(file)
             except: pass
-            res.append((s,timer()))
+            self.res.append((s,timer()))
 
-        assert len(res) == len(nfiles)
-        return ('stat_NONEXIST', res) 
+        assert len(self.res) == len(nfiles)
+        return self.res
+
+class utime(metaop):
+    """access a list of files by os.utime()"""
+    def __init__(self, files, times=None, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "utime", verbose, dryrun)
+        assert files is not None
+        self.files = files
+        self.times = times
+
+   def exec(self):
+        if self.verbose:
+            for file in self.files: self.vs("os.utime(%s, %s)" % (file, times))
+        if self.dryrun: return None
         
-    def utime(self, files, times=None, verbose=False, dryrun=False):
-        """access a list of files by os.utime()"""
-        
-        if verbose:
-            for file in files: self.vs("os.utime(%s, %s)" % (file, times))
-        if dryrun: return None
-        
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
-            os.utime(file, times)
-            res.append((s, timer()))
+            os.utime(file, self.times)
+            self.res.append((s, timer()))
         
-        assert len(res) == len(files)
-        return ('utime', res) 
-        
-    def chmod(self, files, mode=stat.S_IEXEC, verbose=False, dryrun=False):
-        """access a list of files by os.chmod()"""
-        
-        if verbose:
-            for file in files: self.vs("os.chmod(%s, 0x%x)" % (file, mode))
-        if dryrun: return None
+        assert len(self.res) == len(self.files)
+        return self.res 
+
+class chmod(metaop):
+    """access a list of files by os.chmod()"""
+    def __init__(self, files, mode=stat.S_IEXEC, verbose=False, dryrun=False,
+        **kw):
+        metaop.__init__(self, "chmod", verbose, dryrun)
+        if self.verbose:
+            for file in self.files:
+                self.vs("os.chmod(%s, 0x%x)" % (file, mode))
+        if self.dryrun: return None
            
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
-            os.chmod(file, mode)
-            res.append((s,timer()))
+            os.chmod(file, self.mode)
+            self.res.append((s,timer()))
 
-        assert len(res) == len(files)
-        return ('chmod', res) 
-        
-    def rename(self, files, verbose=False, dryrun=False):
-        """access a list of files by os.rename()"""
-        
-        if verbose:
-            for file in files:
+        assert len(self.res) == len(self.files)
+        return self.res 
+
+class rename(metaop):
+    """access a list of files by os.rename()"""
+    def __init__(self, files, verbose=False, dryrun=False, **kw):
+        metaop.__init__(self, "rename", verbose, dryrun)
+        self.files = files
+
+    def exec(self):
+        if self.verbose:
+            for file in self.files:
                 self.vs("os.rename(%s, %s.to)" % (file, file))
-        if dryrun: return None
+        if self.dryrun: return None
         
-        res = []
-        for file in files:
+        for file in self.files:
             tofile = file + ".to"
             s = timer()
             os.rename(file, tofile)
-            res.append((s,timer()))
-        assert len(res) == len(files)
+            self.res.append((s, timer()))
+        assert len(self.res) == len(self.files)
         
         # rename back
-        for file in files:
+        for file in self.files:
             tofile = file + ".to"
-            if verbose: self.vs("os.rename(%s, %s) back" % (tofile, file))
+            if self.verbose: self.vs("os.rename(%s, %s) back" % (tofile, file))
             os.rename(tofile, file)
 
-        return ('rename', res) 
+        return self.res
 
-    def unlink(self, files, verbose=False, dryrun=False):
-        """unlink a list of files by os.unlink()"""
+class unlink(metaop):
+    """unlink a list of files by os.unlink()"""
+    def __init__(self, files, self.verbose=False, self.dryrun=False):
+        metaop.__init__(self, "unlink", verbose, dryrun)
+        self.files = files
+    
+    def exec(op):
+        if self.verbose:
+            for file in self.files: self.vs("os.unlink(%s)" % file)
+        if self.dryrun: return None
         
-        if verbose:
-            for file in files: self.vs("os.unlink(%s)" % file)
-        if dryrun: return None
-        
-        res = []
-        for file in files:
+        for file in self.files:
             s = timer()
             os.unlink(file)
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         
-        assert len(res) == len(files)
-        return ('unlink', res) 
+        assert len(self.res) == len(self.files)
+        return self.res 
 
-class IOOper:
-    """
-    Filesystem input/output operations
-    
-    Primitives to conduct a filesystem I/O operation
-    Input: a file to be manipulated on
-    Output: operation name and a list of pairs of operation start and end time
-    """
-    def __init__(self):
-        random.seed() # For offsetread/write
-
-    def vs(self, msg):
-        """verbose output"""
-        sys.stout.write("\n" % msg)
-    
-    def read(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False,
+class ioop:
+    """I/O operation base class"""
+    def __init__(self, name, file, fsize, blksize, flags, verbose=False,
         dryrun=False):
-        """read a file by os.read() with give parameters"""
-        
-        if verbose:
-            self.vs("os.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
+        self.name = name
+        self.file = file
+        self.fsize = fsize
+        self.blksize = blksize
+        self.flags = flags
+        self.verbose = verbose
+        self.res = []
+    
+    def vs(self, msg):
+        sys.stdout.write("%s\n" % msg)
+
+    def exec(self):
+        sys.stdout.write("noop\n")
+        return None
+
+class read(ioop):
+    """read a file by os.read() with give parameters"""
+    def __init__(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False,
+        dryrun=False, **kw):
+        ioop.__init__(self, "read", file, fsize, blksize, flags, verbose,
+        dryrun)
+    
+    def exec(self)
+        if self.verbose:
+            self.vs("os.read(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
         # Be careful!
         # The first record is open time and the last record is close time
-        res = []
         ret = 1
         s = timer()
-        fd = os.open(file, flags)
-        res.append((s,timer()))
+        fd = os.open(self.file, self.flags)
+        self.res.append((s, timer()))
         while ret:
             s = timer()
-            ret = os.read(fd, blksize)
-            res.append((s,timer()))
+            ret = os.read(fd, self.blksize)
+            self.res.append((s, timer()))
             #assert len(ret) == blksize
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('read', res)
-    
-    def reread(self, file, fsize, blksize, flags=os.O_RDONLY, verbose, dryrun):
-        """re-read a file by os.read() with given parameters"""
+        return self.res
 
-        if verbose:
+class reread(ioop):
+    """re-read a file by os.read() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False, 
+        dryrun=False, **kw):
+        ioop.__init__(self, "reread", file, fsize, blksize, flags, verbose,
+        dryrun)
+
+    def exec(self):
+        if self.verbose:
             self.vs("os.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
+        if self.dryrun: return None
 
-        res = []
         ret = 1
         s = timer()
-        fd = os.open(file, flags)
-        t = timer()
-        res.append((s,t))
+        fd = os.open(self.file, self.flags)
+        self.res.append((s, timer()))
         while ret:
             s = timer()
-            ret = os.read(fd, blksize)
-            res.append((s,timer()))
+            ret = os.read(fd, self.blksize)
+            self.res.append((s, timer()))
             #assert len(ret) == blksize
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s,timer()))
 
-        return ('reread', res)
-    
-    def write(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+        return self.res
+
+class write(ioop):
+    """write a file by os.write() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
         mode=0600, byte='0', fsync=False, verbose=False, dryrun=False):
-        """write a file by os.write() with given parameters"""
+        ioop.__init__(self, "write", file, fsize, blksize, flags, verbose,
+        dryrun)
+        self.mode = mode
+        self.byte = byte
+        self.fsync = fsync
+       
+    def exec(self):
+        if self.verbose:
+            self.vs("os.write(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
-        if verbose:
-            self.vs("os.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        block = byte * blksize
+        block = self.byte * self.blksize
         writebytes = 0
-        res = []
         s = timer()
-        fd = os.open(file, flags, mode)
-        res.append((s,timer()))
-        while writebytes < fsize:
+        fd = os.open(self.file, self.flags, self.mode)
+        self.res.append((s, timer()))
+        while writebytes < self.fsize:
             s = timer()
             ret = os.write(fd, block)
-            res.append((s,timer()))
-            assert ret == blksize
+            self.res.append((s, timer()))
+            assert ret == self.blksize
             writebytes += ret
-        if fsync:
+        if self.fsync:
             s = timer()
             os.fsync(fd)
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('write', res)
-    
-    def rewrite(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
-        mode=0600, byte='1', fsync=False, verbose=False, dryrun=False):
-        """re-write a file by os.write() with given parameters"""
+        return self.res
+
+class rewrite(ioop):
+    """re-write a file by os.write() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR,
+        mode=0600, byte='1', fsync=False, verbose=False, self.dryrun=False):
+        ioop.__init__(self, "rewrite", file, fsize, blksize, flags, verbose,
+        dryrun)
+        self.mode = mode
+        self.byte = byte
+        self.fsync = fsync
+
+    def exec(self):
+        if self.verbose:
+            self.vs("os.write(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
-        if verbose:
-            self.vs("os.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        block = byte * blksize
+        block = self.byte * self.blksize
         writebytes = 0
-        res = []
+        self.res = []
         s = timer()
-        fd = os.open(file, flags, mode)
-        res.append((s,timer()))
-        while writebytes < fsize:
+        fd = os.open(self.file, self.flags, self.mode)
+        self.res.append((s, timer()))
+        while writebytes < self.fsize:
             s = timer()
             ret = os.write(fd, block)
-            res.append((s,timer()))
-            assert ret == blksize
+            self.res.append((s, timer()))
+            assert ret == self.blksize
             writebytes += ret
-        if fsync:
+        if self.fsync:
             s = timer()
             os.fsync(fd)
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('rewrite', res)
-    
-    def fread(self, file, fsize, blksize, flags='r', verbose=False,
+        return self.res
+
+class fread(ioop):
+    """read a file by f.read() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags='r', verbose=False,
         dryrun=False):
-        """read a file by f.read() with given parameters"""
+        ioop.__init__(self, "fread", file, fsize, blksize, flags, verbose,
+        dryrun)
+    
+    def exec(self):
+        if self.verbose:
+            self.vs("f.read(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
-        if verbose >= VERBOSE_INFO:
-            self.vs("f.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        res = []
         ret = 1
         s = timer()
-        f = open(file, flags)
-        res.append((s,timer()))
+        f = open(self.file, self.flags)
+        self.res.append((s, timer()))
         while ret:
             s = timer()
-            ret = f.read(blksize)
-            res.append((s,timer()))
+            ret = f.read(self.blksize)
+            self.res.append((s,timer()))
             #assert len(ret) == blksize
         s = timer()
         f.close()
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('fread', res)
-    
-    def freread(self, file, fsize, blksize, flags='r', verbose=False,
+        return self.res
+
+class freread(ioop):
+    """read a file by f.read() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags='r', verbose=False,
         dryrun=False):
-        """read a file by f.read() with given parameters"""
+        ioop.__init__(self, "freread", file, fsize, blksize, flags, verbose,
+        dryrun)
+    
+    def exec(self):
+        if self.verbose:
+            self.vs("f.read(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
-        if verbose:
-            self.vs("f.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        res = []
         ret = 1
         s = timer()
-        f = open(file, flags)
-        res.append((s,timer()))
+        f = open(self.file, self.flags)
+        self.res.append((s, timer()))
         while ret:
             s = timer()
-            ret = f.read(blksize)
-            res.append((s,timer()))
+            ret = f.read(self.blksize)
+            self.res.append((s, timer()))
             #assert len(ret) == blksize
-            opcnt += 1
         s = timer()
         f.close()
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('freread', res)
+        return self.res
 
-    def fwrite(self, file, fsize, blksize, flags='w', byte='2', fsync=False,
+class fwrite(ioop):
+    """write a file by f.write() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags='w', byte='2', fsync=False,
         verbose=False, dryrun=False):
-        """write a file by f.write() with given parameters"""
-        
-        if verbose:
-            self.vs("f.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        block = byte * blksize
-        writebytes = 0
-        res = []
-        s = timer()
-        f = open(file, flags)
-        res.append((s,timer()))
-        while writebytes < fsize:
-            s = timer()
-            f.write(block)
-            res.append((s,timer()))
-            assert ret == blksize
-            writebytes += ret
-        if fsync:
-            s = timer()
-            f.flush()
-            os.fsync(f.fileno())
-            res.append((s,timer()))
-        s = timer()
-        f.close()
-        res.append((s,timer()))
-
-        return ('fwrite', res) 
+        ioop.__init__(self, "fwrite", file, fsize, blksize, flags, verbose,
+        dryrun)
+        self.byte = byte
+        self.fsync = fsync
     
-    def frewrite(self, file, fsize, blksize, flags='w', byte='3', fsync=False,
-        verbose=False, dryrun=False):
-        """re-write a file by f.write() with given parameters"""
+    def exec(self):
+        if self.verbose:
+            self.vs("f.write(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
         
-        if verbose:
-            self.vs("f.write(%s, %d) * %d" % (file, blksize, fsize/blksize))
-        if dryrun: return None
-        
-        block = byte * blksize
+        block = self.byte * self.blksize
         writebytes = 0
-        res = []
         s = timer()
-        f = open(file, flags)
-        res.append((s,timer()))
-        while writebytes < fsize:
+        f = open(self.file, self.flags)
+        self.res.append((s, timer()))
+        while writebytes < self.fsize:
             s = timer()
             f.write(block)
-            res.append((s,timer()))
-            assert ret == blksize
-            writebytes += ret
-        if fsync:
+            self.res.append((s, timer()))
+            writebytes += self.blksize
+        if self.fsync:
             s = timer()
             f.flush()
             os.fsync(f.fileno())
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         s = timer()
         f.close()
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('frewrite', res)
+        return self.res
 
-    def offsetread(self, file, fsize, blksize, flags=os.O_RDONLY, 
+class frewrite(ioop):
+    """re-write a file by f.write() with given parameters"""
+    def __init__(self, file, fsize, blksize, flags='w', byte='3', fsync=False,
+        verbose=False, dryrun=False):
+        ioop.__init__(self, "frewrite", file, fsize, blksize, flags, verbose,
+        dryrun)
+        self.byte = byte
+        self.fsync = fsync
+    
+    def exec(self):
+        if self.verbose:
+            self.vs("f.write(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
+        if self.dryrun: return None
+        
+        block = self.byte * self.blksize
+        writebytes = 0
+        s = timer()
+        f = open(self.file, self.flags)
+        self.res.append((s, timer()))
+        while writebytes < self.fsize:
+            s = timer()
+            f.write(block)
+            self.res.append((s, timer()))
+            writebytes += self.blksize
+        if self.fsync:
+            s = timer()
+            f.flush()
+            os.fsync(f.fileno())
+            self.res.append((s, timer()))
+        s = timer()
+        f.close()
+        self.res.append((s, timer()))
+
+        return self.res
+
+class offsetread(ioop):
+    """Read a file by os.read() with offsets in a certain distribution"""
+    def __init__(self, file, fsize, blksize, flags=os.O_RDONLY, 
         dist=None, verbose=False, dryrun=False):
-        """Read a file by os.read() with offsets in a certain distribution
-        
-        dist -- a tuple (dist_name, dist_mu, dist_sigma)
-        """
-
+        ioop.__init__(self, "offsetread", file, fsize, blksize, flags, 
+        verbose, dryrun)
+        self.dist = dist
+    
+    def exec(self):
         # Generate distribution
         randwalk = []
-        opcnt = fsize / blksize
+        opcnt = self.fsize / self.blksize
         if dist is None or dist[0] == "random":
             for i in range(0, opcnt):
                 offset = random.randint(0, fsize)
@@ -507,35 +607,40 @@ class IOOper:
             # if mu is None: mu = 
             # if sigma is None: sigma = 
             for i in range(0, opcnt):
-                offset = int(round(normalvariate(mu, sigma)))
+                offset = int(round(normalvariate(dist_mu, dist_sigma)))
                 assert offset > 0 and offset < fsize
                 randwalk.append(offset)
         
-        if verbose:
+        if self.verbose:
             for offset in randwalk:
-                self.verbose("os.read(%s, %d) * %d at %d" %
-                    (file, blksize, fsize/blksize), offset)
-        if dryrun: return None
+                self.self.verbose("os.read(%s, %d) * %d at %d" %
+                    (self.file, self.blksize, self.fsize/self.blksize), offset)
+        if self.dryrun: return None
         
-        res = []
         s = timer()
-        fd = os.open(file, flags)
-        res.append((s,timer()))
+        fd = os.open(self.file, self.flags)
+        self.res.append((s, timer()))
         for offset in randwalk:
             s = timer()
             os.lseek(fd, offset, os.SEEK_SET)
-            ret = os.read(fd, blksize)
-            res.append((s,timer()))
+            ret = os.read(fd, self.blksize)
+            self.res.append((s, timer()))
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('offsetread', res)
-    
-    def offsetwrite(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+        return self.res
+
+class offsetwrite(ioop):
+    """Write a file by os.write() with offsets in a certain distribution"""
+    def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
         byte='4', dist=None, verbose=False, dryrun=False):
-        """write a file by os.write() with offsets in a certain distribution"""
-        
+        ioop.__init__(self, "offsetwrite", file, fsize, blksize, flags, 
+        verbose, dryrun)
+        self.byte = byte
+        self.dist = dist
+
+    def exec(self):
         # Generate distribution
         randwalk = []
         opcnt = fsize / blksize
@@ -550,45 +655,31 @@ class IOOper:
             # if mu is None: mu = 
             # if sigma is None: sigma = 
             for i in range(0, opcnt):
-                offset = int(round(normalvariate(mu, sigma)))
+                offset = int(round(normalvariate(dist_mu, dist_sigma)))
                 assert offset > 0 and offset < fsize
                 randwalk.append(offset)
         
-        if verbose:
+        if self.verbose:
             for offset in randwalk:
-                self.verbose("os.write(%s, %d) * %d at %d" %
-                    (file, blksize, fsize/blksize), offset)
-        if dryrun: return None
+                self.self.verbose("os.write(%s, %d) * %d at %d" %
+                    (self.file, self.blksize, self.fsize/self.blksize), offset)
+        if self.dryrun: return None
 
-        block = byte * blksize
-        res = []
+        block = self.byte * self.blksize
         s = timer()
-        fd = os.open(file, flags)
-        res.append((s, timer()))
+        fd = os.open(self.file, self.flags)
+        self.res.append((s, timer()))
         for offset in randwalk:
             s = timer()
             os.lseek(fd, offset, os.SEEK_SET)
             ret = os.write(fd, block)
-            res.append((s, timer()))
-        if fsync:
+            self.res.append((s, timer()))
+        if self.fsync:
             s = timer()
             os.fsync(fd)
-            res.append((s,timer()))
+            self.res.append((s, timer()))
         s = timer()
         os.close(fd)
-        res.append((s,timer()))
+        self.res.append((s, timer()))
 
-        return ('offsetwrite', res)
-    
-class FileSystemOperation(MetaOper, IOOper):
-    def __init__(self):
-        IOOper.__init__(self)
-        
-        # verbose
-        self.verbosecnt = 0
-
-    # verbose routines
-    def vs(self, msg):
-        """overrided vs()"""
-        sys.stdout.write("[%05d] %s\n" % (self.verbosecnt, msg))
-        self.verbosecnt += 1
+        return self.res
