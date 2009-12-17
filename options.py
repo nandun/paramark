@@ -24,7 +24,9 @@ import sys
 import os
 import stat
 import optparse
+import textwrap
 import ConfigParser
+import StringIO
 
 from fsop import FSOP_META, FSOP_IO
 
@@ -47,19 +49,22 @@ class Options:
             except IOError:
                 sys.stderr.write("failed to open file %s" % filename)
                 sys.exit(1)
-            f.write(PARAMARK_DEFAULT_CONFIG_FILE)
+            f.write(PARAMARK_DEFAULT_CONFIG_STRING)
             f.close()
         else:
-            sys.stdout.write(PARAMARK_DEFAULT_CONFIG_FILE)
+            sys.stdout.write(PARAMARK_DEFAULT_CONFIG_STRING)
         
-    def parse_conf(self, filename):
-        # MUST keep consistent with configure file format
-        self.cfg.read(filename)
+    def parse_conf(self, fp, filename=[]):
+        if fp:
+            self.cfg.readfp(fp)
+        if filename:
+            loaded_files = self.cfg.read(filename)
 
-        section = "runtime"
-        if self.cfg.has_section(section):
-            for k, v in self.cfg.items(section):
-                self.opts[k] = eval(v)
+        # MUST keep consistent with configure file format
+        for section in ["runtime", "report"]:
+            if self.cfg.has_section(section):
+                for k, v in self.cfg.items(section):
+                    self.opts[k] = eval(v)
         
         # Configuration for each operation
         oplist = self.opts["metaops"] + self.opts["ioops"]
@@ -71,11 +76,17 @@ class Options:
 
         # Override local options
         for sec in ["meta", "io"]:
-            if self.cfg.has_section(sec + "opts"):
+            section = sec + "opts"
+            if self.cfg.has_section(section) and \
+               self.cfg.has_option(section, "overwrite") and \
+               self.cfg.getboolean(section, "overwrite"):
                 for k, v in self.cfg.items(sec + "opts"):
                     for op in self.opts[sec + "ops"]:
                         if self.opts[op].has_key(k):
                             self.opts[op][k] = eval(v)
+            
+        if filename: return loaded_files
+        return None
 
     def store_conf(self, filename="paramark.conf"):
         return
@@ -84,14 +95,62 @@ class Options:
     # Parse/Store options from/to command line
     #
     def parse_argv(self, argv):
-        return
+        usage = "paramark command [options]"
+
+        parser = optparse.OptionParser(usage=usage,
+                    formatter=OptionParserHelpFormatter())
+        
+        #parser.remove_option("-h")
+        #parser.add_option("-h", "--help", action="store_true",
+        #    dest="help", default=False, help="show the help message and exit")
+        
+        parser.add_option("-c", "--conf", action="store", type="string",
+            dest="conf", metavar="PATH", default="/",
+            help="configuration file")
+        
+        # override configuration part
+        parser.add_option("-v", "--verbosity", action="store", type="int",
+            dest="verbosity", metavar="NUM", default=0,
+            help="verbosity level: 0/1/2/3/4/5 (default: 0)")
+        
+        parser.add_option("-d", "--dryrun", action="store_true",
+            dest="dryrun", default=False, 
+            help="dry run, do not execute (default: disabled)")
+
+        opts, args = parser.parse_args(argv)
+        
+        return opts, None
+
+    def load(self, argv):
+        errstr = None
+
+        # Parse command options first
+        opts, _ = self.parse_argv(argv)
+
+        # Load hard-coded full options
+        output = StringIO.StringIO(PARAMARK_DEFAULT_CONFIG_STRING)
+        loaded_files = self.parse_conf(output,          # load hard string
+            [os.path.expanduser("~/.paramark_conf"),    # load home default
+             os.path.abspath(".paramark_conf"),         # load cwd default
+             os.path.abspath(opts.conf)])               # load user-specified
+        output.close()
+
+        # Load from command options
+        for o in ["verbosity", "dryrun"]:
+            self.opts[o] = opts.__dict__[o]
+
+        if self.opts["verbosity"] >= 5 and loaded_files is not None:
+            sys.stderr.write("Successfull load configuration from %s.\n" %
+                ", ".join(loaded_files))
+
+        return self.opts, errstr
 
 #
-# Default configure file
+# Default configure string
 # Hard-coded for installation convenience
 #
 
-PARAMARK_DEFAULT_CONFIG_FILE = """\
+PARAMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark default benchmarking configuration
 # 2009/12/17
 
@@ -159,6 +218,7 @@ bsize = 4 * 1024
 
 ##########################################################################
 # Local Operation Options
+#   * Safe to leave alone
 #   * Each operation in a seperate section
 ##########################################################################
 
@@ -274,8 +334,49 @@ bsize = 0
 flags = 'w'
 """
 
+# OptionParser help string workaround
+# adapted from Tim Chase's code from following thread
+# http://groups.google.com/group/comp.lang.python/msg/09f28e26af0699b1
+class OptionParserHelpFormatter(optparse.IndentedHelpFormatter):
+    def format_description(self, desc):
+        if not desc: return ""
+        desc_width = self.width - self.current_indent
+        indent = " " * self.current_indent
+        bits = desc.split('\n')
+        formatted_bits = [
+            textwrap.fill(bit, desc_width, initial_indent=indent,
+                susequent_indent=indent)
+            for bit in bits]
+        result = "\n".join(formatted_bits) + "\n"
+        return result
+
+    def format_option(self, opt):
+        result = []
+        opts = self.option_strings[opt]
+        opt_width = self.help_position - self.current_indent - 2
+        if len(opts) > opt_width:
+            opts = "%*s%s\n" % (self.current_indent, "", opts)
+            indent_first = self.help_position
+        else:
+            opts = "%*s%-*s  " % (self.current_indent, "", opt_width, opts)
+            indent_first = 0
+        result.append(opts)
+        if opt.help:
+            help_text = self.expand_default(opt)
+            help_lines = []
+            for para in help_text.split("\n"):
+                help_lines.extend(textwrap.wrap(para, self.help_width))
+            result.append("%*s%s\n" % (indent_first, "", help_lines[0]))
+            result.extend(["%*s%s\n" % (self.help_position, "", line)
+                for line in help_lines[1:]])
+        elif opts[-1] != "\n":
+            result.append("\n")
+        return "".join(result)
+
 if __name__ == "__main__":
     c = Options()
     #c.store_conf()
-    c.default_conf("paramark.conf")
-    c.parse_conf("paramark.conf")
+    #c.default_conf(".paramark_conf")
+    #c.parse_conf("paramark.conf")
+    opts, errstr = c.load(sys.argv)
+    print opts["verbosity"]
