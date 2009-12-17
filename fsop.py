@@ -1,5 +1,5 @@
 #############################################################################
-# ParaMark:  A Parallel/Distributed File Systems Benchmark
+# ParaMark: A Parallel/Distributed File Systems Benchmark
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -17,18 +17,19 @@
 #############################################################################
 
 #
+# fsop.py
 # File system operation primitives
 #
 
-# Implementation remarks
-#  * Interfaces of operation primitives should be ketp as small as possbile
-
+import __builtin__  # for open()
 import os
 import sys
 import stat
 import random
 
 from common import *
+
+__all__ = ["FSOP_META", "FSOP_IO"]
 
 class metaop:
     """Metadata operation base class"""
@@ -39,109 +40,123 @@ class metaop:
         self.verbose = verbose
         self.dryrun = dryrun
         self.res = []
+    
+    def updatekw(self, kw):
+        if kw is not None:
+            for k, v in kw:
+                if self.__dict__.has_key(k): self.__dict__[k] = v
 
     def vs(self, msg):
-        sys.stdout.write("%s\n" % msg)
-
-    def exec(self):
-        sys.stdout.write("nometaop\n")
+        sys.stderr.write("%s\n" % msg)
+    
+    def execute(self):
+        sys.stderr.write("nometaop\n")
         return None
 
+FSOP_META = ["mkdir", "rmdir", "creat", "access", "open","open_close", 
+    "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
+__all__.extend(FSOP_META)
+
 class mkdir(metaop):
-    """make a list of directories by os.mkdir()"""
+    """Make a list of directories by os.mkdir()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "mkdir", files, verbose, dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files: self.vs("os.mkdir(%s)" % dir)
+            for f in self.files: self.vs("os.mkdir(%s)" % f)
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.mkdir(file)
+            os.mkdir(f)
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
-        return res
+        return self.res
         
 class rmdir(metaop):
-    """remove a list of directories by os.rmdir()"""
+    """Remove a list of directories by os.rmdir()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "rmdir", files, verbose, dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in files: self.vs("os.rmdir(%s)" % file)
+            for f in self.files: self.vs("os.rmdir(%s)" % f)
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.rmdir(file)
+            os.rmdir(f)
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
         return self.res
 
 class creat(metaop):
-    """create a list of files by os.open() and os.close() pairs"""
-    def __init__(self, files, flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 
-        mode=0600, verbose=False, dryrun=False, **kw):
+    """Create a list of files by os.open() and os.close() pairs"""
+    def __init__(self, files, flags= os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 
+        mode=stat.S_IRUSR | stat.S_IWUSR, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "creat", files, verbose, dryrun)
         self.flags = flags
         self.mode = mode
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in files:
+            for f in self.files:
                 self.vs("os.close(os.open(%s, 0x%x, 0x%x))" 
-                    % (file, flags, mode))
+                    % (f, self.flags, self.mode))
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.close(os.open(file, flags, mode))
+            os.close(os.open(f, self.flags, self.mode))
             self.res.append((s, timer()))
 
         assert len(self.res) == len(self.files)
         return self.res
 
 class access(metaop):
-    """access a list of files by os.access()"""
+    """Access a list of files by os.access()"""
     def __init__(self, files, mode=os.F_OK, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "access", files, verbose, dryrun)
         self.mode = mode
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in files:
-                self.vs("os.access(%s, 0x%x)" % (file, mode))
+            for f in self.files:
+                self.vs("os.access(%s, 0x%x)" % (f, self.mode))
         if self.dryrun: return None
         
-        for file in files:
+        for f in self.files:
             s = timer()
-            ret = os.access(file, mode)
+            os.access(f, self.mode)
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
         return self.res
 
-class open(metaop):
-    """open a list of files by os.open()"""
+class open(metaop): # shadows __builtin__.open
+    """Open a list of files by os.open()"""
     def __init__(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False,
         **kw):
         metaop.__init__(self, "open", files, verbose, dryrun)
         self.flags = flags
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files:
-                self.vs("os.open(%s, 0x%x)" % (file, flags))
+            for f in self.files:
+                self.vs("os.open(%s, 0x%x)" % (f, self.flags))
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            fd = os.open(file, flags)
+            fd = os.open(f, self.flags)
             self.res.append((s, timer()))
             os.close(fd)
         
@@ -149,57 +164,61 @@ class open(metaop):
         return self.res
 
 class open_close(metaop):
-    """access a list of files by os.open() and os.close() pairs"""
+    """Access a list of files by os.open() and os.close() pairs"""
     def __init__(self, files, flags=os.O_RDONLY, verbose=False, dryrun=False,
         **kw):
         metaop.__init__(self, "open_close", files, verbose, dryrun)
         self.flags = flags
-        
+        self.updatekw(kw)
+    
+    def execute(self):
         if self.verbose:
-            for file in self.files:
-                self.vs("os.close(os.open(%s, 0x%x))" % (file, flags))
+            for f in self.files:
+                self.vs("os.close(os.open(%s, 0x%x))" % (f, self.flags))
         if self.dryrun: return None
             
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.close(os.open(file, flags))
+            os.close(os.open(f, self.flags))
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
         return self.res
 
 class stat_exist(metaop):
-    """access a list of files by os.stat()"""
+    """Access a list of files by os.stat()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "stat_exist", files, verbose, dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files: self.vs("os.stat(%s)" % file)
+            for f in self.files: self.vs("os.stat(%s)" % f)
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.stat(file)
+            os.stat(f)
             self.res.append((s, timer()))
 
         assert len(self.res) == len(self.files)
         return self.res 
 
 class stat_non(metaop):
-    """access a list of NON-EXIST files by os.stat()"""
+    """Access a list of NON-EXIST files by os.stat()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "stat_non", files, verbose, dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         nfiles = map(lambda f:f+'n', self.files)
         if self.verbose:
-            for file in nfiles: self.vs("os.stat(%s)" % file)
+            for f in nfiles: self.vs("os.stat(%s)" % f)
         if self.dryrun: return None
         
-        for file in nfiles:
+        for f in nfiles:
             s = timer()
-            try: os.stat(file)
+            try: os.stat(f)
             except: pass
             self.res.append((s, timer()))
 
@@ -207,83 +226,89 @@ class stat_non(metaop):
         return self.res
 
 class utime(metaop):
-    """access a list of files by os.utime()"""
+    """Access a list of files by os.utime()"""
     def __init__(self, files, times=None, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "utime", files, verbose, dryrun)
         self.times = times
+        self.updatekw(kw)
 
-   def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files: self.vs("os.utime(%s, %s)" % (file, times))
+            for f in self.files:
+                self.vs("os.utime(%s, %s)" % (f, self.times))
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.utime(file, self.times)
+            os.utime(f, self.times)
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
         return self.res 
 
 class chmod(metaop):
-    """access a list of files by os.chmod()"""
+    """Access a list of files by os.chmod()"""
     def __init__(self, files, mode=stat.S_IEXEC, verbose=False, dryrun=False,
         **kw):
         metaop.__init__(self, "chmod", files, verbose, dryrun)
+        self.mode = mode
+        self.updatekw(kw)
    
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files:
-                self.vs("os.chmod(%s, 0x%x)" % (file, mode))
+            for f in self.files:
+                self.vs("os.chmod(%s, 0x%x)" % (f, self.mode))
         if self.dryrun: return None
            
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.chmod(file, self.mode)
+            os.chmod(f, self.mode)
             self.res.append((s, timer()))
 
         assert len(self.res) == len(self.files)
         return self.res 
 
 class rename(metaop):
-    """access a list of files by os.rename()"""
+    """Access a list of files by os.rename()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "rename", files, verbose, dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            for file in self.files:
-                self.vs("os.rename(%s, %s.to)" % (file, file))
+            for f in self.files:
+                self.vs("os.rename(%s, %s.to)" % (f, f))
         if self.dryrun: return None
         
-        for file in self.files:
-            tofile = file + ".to"
+        for f in self.files:
+            tofile = f + ".to"
             s = timer()
-            os.rename(file, tofile)
+            os.rename(f, tofile)
             self.res.append((s, timer()))
         assert len(self.res) == len(self.files)
         
         # rename back
-        for file in self.files:
-            tofile = file + ".to"
-            if self.verbose: self.vs("os.rename(%s, %s) back" % (tofile, file))
-            os.rename(tofile, file)
+        for f in self.files:
+            tofile = f + ".to"
+            if self.verbose: self.vs("os.rename(%s, %s) back" % (tofile, f))
+            os.rename(tofile, f)
 
         return self.res
 
 class unlink(metaop):
-    """unlink a list of files by os.unlink()"""
-    def __init__(self, files, self.verbose=False, self.dryrun=False, **kw):
+    """Unlink a list of files by os.unlink()"""
+    def __init__(self, files, verbose=False, dryrun=False, **kw):
         metaop.__init__(self, "unlink", files, verbose, dryrun)
+        self.updatekw(kw)
     
-    def exec(op):
+    def execute(self):
         if self.verbose:
-            for file in self.files: self.vs("os.unlink(%s)" % file)
+            for f in self.files: self.vs("os.unlink(%s)" % f)
         if self.dryrun: return None
         
-        for file in self.files:
+        for f in self.files:
             s = timer()
-            os.unlink(file)
+            os.unlink(f)
             self.res.append((s, timer()))
         
         assert len(self.res) == len(self.files)
@@ -299,23 +324,34 @@ class ioop:
         self.blksize = blksize
         self.flags = flags
         self.verbose = verbose
+        self.dryrun = dryrun
         self.res = []
     
+    def updatekw(self, kw):
+        if kw is not None:
+            for k, v in kw:
+                if self.__dict__.has_key(k): self.__dict__[k] = v
+    
     def vs(self, msg):
-        sys.stdout.write("%s\n" % msg)
+        sys.stderr.write("%s\n" % msg)
 
-    def exec(self):
-        sys.stdout.write("noop\n")
+    def execute(self):
+        sys.stderr.write("noop\n")
         return None
 
+FSOP_IO = ["read", "reread", "write", "rewrite", "fread", "freread",
+    "fwrite", "frewrite", "offsetread", "offsetwrite"]
+__all__.extend(FSOP_IO)
+
 class read(ioop):
-    """read a file by os.read() with give parameters"""
+    """Read a file by os.read() with give parameters"""
     def __init__(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False,
         dryrun=False, **kw):
         ioop.__init__(self, "read", file, fsize, blksize, flags, verbose,
         dryrun)
+        self.updatekw(kw)
     
-    def exec(self)
+    def execute(self):
         if self.verbose:
             self.vs("os.read(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -339,15 +375,17 @@ class read(ioop):
         return self.res
 
 class reread(ioop):
-    """reread a file by os.read() with given parameters"""
+    """Reread a file by os.read() with given parameters"""
     def __init__(self, file, fsize, blksize, flags=os.O_RDONLY, verbose=False, 
         dryrun=False, **kw):
         ioop.__init__(self, "reread", file, fsize, blksize, flags, verbose,
         dryrun)
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
-            self.vs("os.read(%s, %d) * %d" % (file, blksize, fsize/blksize))
+            self.vs("os.read(%s, %d) * %d" 
+                % (self.file, self.blksize, self.fsize/self.blksize))
         if self.dryrun: return None
 
         ret = 1
@@ -368,14 +406,16 @@ class reread(ioop):
 class write(ioop):
     """write a file by os.write() with given parameters"""
     def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
-        mode=0600, byte='0', fsync=False, verbose=False, dryrun=False, **kw):
+        mode=stat.S_IRUSR | stat.S_IWUSR, byte='0', fsync=False,
+        verbose=False, dryrun=False, **kw):
         ioop.__init__(self, "write", file, fsize, blksize, flags, verbose,
         dryrun)
         self.mode = mode
         self.byte = byte
         self.fsync = fsync
+        self.updatekw(kw)
        
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("os.write(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -403,16 +443,18 @@ class write(ioop):
         return self.res
 
 class rewrite(ioop):
-    """re-write a file by os.write() with given parameters"""
+    """Re-write a file by os.write() with given parameters"""
     def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR,
-        mode=0600, byte='1', fsync=False, verbose=False, dryrun=False, **kw):
+        mode=stat.S_IRUSR | stat.S_IWUSR, byte='1', fsync=False, 
+        verbose=False, dryrun=False, **kw):
         ioop.__init__(self, "rewrite", file, fsize, blksize, flags, verbose,
         dryrun)
         self.mode = mode
         self.byte = byte
         self.fsync = fsync
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("os.write(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -441,13 +483,14 @@ class rewrite(ioop):
         return self.res
 
 class fread(ioop):
-    """read a file by f.read() with given parameters"""
+    """Read a file by f.read() with given parameters"""
     def __init__(self, file, fsize, blksize, flags='r', verbose=False,
         dryrun=False, **kw):
         ioop.__init__(self, "fread", file, fsize, blksize, flags, verbose,
         dryrun)
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("f.read(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -455,7 +498,7 @@ class fread(ioop):
         
         ret = 1
         s = timer()
-        f = open(self.file, self.flags)
+        f = __builtin__.open(self.file, self.flags)
         self.res.append((s, timer()))
         while ret:
             s = timer()
@@ -469,13 +512,14 @@ class fread(ioop):
         return self.res
 
 class freread(ioop):
-    """read a file by f.read() with given parameters"""
+    """Read a file by f.read() with given parameters"""
     def __init__(self, file, fsize, blksize, flags='r', verbose=False,
         dryrun=False, **kw):
         ioop.__init__(self, "freread", file, fsize, blksize, flags, verbose,
         dryrun)
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("f.read(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -483,7 +527,7 @@ class freread(ioop):
         
         ret = 1
         s = timer()
-        f = open(self.file, self.flags)
+        f = __builtin__.open(self.file, self.flags)
         self.res.append((s, timer()))
         while ret:
             s = timer()
@@ -504,8 +548,9 @@ class fwrite(ioop):
         dryrun)
         self.byte = byte
         self.fsync = fsync
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("f.write(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -514,7 +559,7 @@ class fwrite(ioop):
         block = self.byte * self.blksize
         writebytes = 0
         s = timer()
-        f = open(self.file, self.flags)
+        f = __builtin__.open(self.file, self.flags)
         self.res.append((s, timer()))
         while writebytes < self.fsize:
             s = timer()
@@ -533,15 +578,16 @@ class fwrite(ioop):
         return self.res
 
 class frewrite(ioop):
-    """re-write a file by f.write() with given parameters"""
+    """Re-write a file by f.write() with given parameters"""
     def __init__(self, file, fsize, blksize, flags='w', byte='3', fsync=False,
         verbose=False, dryrun=False, **kw):
         ioop.__init__(self, "frewrite", file, fsize, blksize, flags, verbose,
         dryrun)
         self.byte = byte
         self.fsync = fsync
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         if self.verbose:
             self.vs("f.write(%s, %d) * %d" 
                 % (self.file, self.blksize, self.fsize/self.blksize))
@@ -550,7 +596,7 @@ class frewrite(ioop):
         block = self.byte * self.blksize
         writebytes = 0
         s = timer()
-        f = open(self.file, self.flags)
+        f = __builtin__.open(self.file, self.flags)
         self.res.append((s, timer()))
         while writebytes < self.fsize:
             s = timer()
@@ -575,30 +621,35 @@ class offsetread(ioop):
         ioop.__init__(self, "offsetread", file, fsize, blksize, flags, 
         verbose, dryrun)
         self.dist = dist
+        self.updatekw(kw)
     
-    def exec(self):
+    def execute(self):
         # Generate distribution
         randwalk = []
         opcnt = self.fsize / self.blksize
-        if dist is None or dist[0] == "random":
-            for i in range(0, opcnt):
-                offset = random.randint(0, fsize)
-                assert offset > 0 and offset < fsize
+        if self.dist is None or self.dist[0] == "random":
+            i = 0
+            while i < opcnt:
+                offset = random.randint(0, self.fsize)
+                assert offset > 0 and offset < self.fsize
                 randwalk.append(offset)
-        elif dist[0] == "normal":
-            dist_name, dist_mu, dist_sigma = dist
+                i += 1
+        elif self.dist[0] == "normal":
+            dist_name, dist_mu, dist_sigma = self.dist
             # TODO: Calculate mu and sigma
             # if mu is None: mu = 
             # if sigma is None: sigma = 
-            for i in range(0, opcnt):
-                offset = int(round(normalvariate(dist_mu, dist_sigma)))
-                assert offset > 0 and offset < fsize
+            i = 0
+            while i < opcnt:
+                offset = int(round(random.normalvariate(dist_mu, dist_sigma)))
+                assert offset > 0 and offset < self.fsize
                 randwalk.append(offset)
+                i += 1
         
         if self.verbose:
             for offset in randwalk:
-                self.self.verbose("os.read(%s, %d) * %d at %d" %
-                    (self.file, self.blksize, self.fsize/self.blksize), offset)
+                self.vs("os.read(%s, %d) * %d at %d" %
+                    (self.file, self.blksize, self.fsize/self.blksize, offset))
         if self.dryrun: return None
         
         s = timer()
@@ -607,7 +658,7 @@ class offsetread(ioop):
         for offset in randwalk:
             s = timer()
             os.lseek(fd, offset, os.SEEK_SET)
-            ret = os.read(fd, self.blksize)
+            os.read(fd, self.blksize)
             self.res.append((s, timer()))
         s = timer()
         os.close(fd)
@@ -618,35 +669,41 @@ class offsetread(ioop):
 class offsetwrite(ioop):
     """Write a file by os.write() with offsets in a certain distribution"""
     def __init__(self, file, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
-        byte='4', dist=None, verbose=False, dryrun=False, **kw):
+        byte='4', dist=None, fsync=False, verbose=False, dryrun=False, **kw):
         ioop.__init__(self, "offsetwrite", file, fsize, blksize, flags, 
         verbose, dryrun)
         self.byte = byte
         self.dist = dist
+        self.fsync = fsync
+        self.updatekw(kw)
 
-    def exec(self):
+    def execute(self):
         # Generate distribution
         randwalk = []
-        opcnt = fsize / blksize
-        if dist is None or dist[0] == "random":
-            for i in range(0, opcnt):
-                offset = random.randint(0, fsize)
-                assert offset > 0 and offset < fsize
+        opcnt = self.fsize / self.blksize
+        if self.dist is None or self.dist[0] == "random":
+            i = 0
+            while i < opcnt:
+                offset = random.randint(0, self.fsize)
+                assert offset > 0 and offset < self.fsize
                 randwalk.append(offset)
-        elif dist[0] == "normal":
-            dist_name, dist_mu, dist_sigma = dist
+                i += 1
+        elif self.dist[0] == "normal":
+            dist_name, dist_mu, dist_sigma = self.dist
             # TODO: Calculate mu and sigma
             # if mu is None: mu = 
             # if sigma is None: sigma = 
-            for i in range(0, opcnt):
-                offset = int(round(normalvariate(dist_mu, dist_sigma)))
-                assert offset > 0 and offset < fsize
+            i = 0
+            while i < opcnt:
+                offset = int(round(random.normalvariate(dist_mu, dist_sigma)))
+                assert offset > 0 and offset < self.fsize
                 randwalk.append(offset)
+                i += 1
         
         if self.verbose:
             for offset in randwalk:
-                self.self.verbose("os.write(%s, %d) * %d at %d" %
-                    (self.file, self.blksize, self.fsize/self.blksize), offset)
+                self.vs("os.write(%s, %d) * %d at %d" %
+                    (self.file, self.blksize, self.fsize/self.blksize, offset))
         if self.dryrun: return None
 
         block = self.byte * self.blksize
@@ -656,7 +713,7 @@ class offsetwrite(ioop):
         for offset in randwalk:
             s = timer()
             os.lseek(fd, offset, os.SEEK_SET)
-            ret = os.write(fd, block)
+            os.write(fd, block)
             self.res.append((s, timer()))
         if self.fsync:
             s = timer()

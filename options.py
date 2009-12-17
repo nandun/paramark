@@ -20,75 +20,65 @@
 # Options and Configurations Parsers
 #
 
+import sys
 import os
 import stat
 import optparse
 import ConfigParser
 
-class ParamarkOptions:
+from fsop import FSOP_META, FSOP_IO
+
+class Options:
+    """Store/Retrieve options from/to configure files or command arguments
+    """
     def __init__(self):
         self.cfg = ConfigParser.ConfigParser()
-    
+        
+        # options container to pass to benchmark
+        self.opts = {}
+
     #
     # Parse/Store options from/to configure file
     #
+    def default_conf(self, filename=None):
+        if filename:
+            try:
+                f = open(filename, "wb")
+            except IOError:
+                sys.stderr.write("failed to open file %s" % filename)
+                sys.exit(1)
+            f.write(PARAMARK_DEFAULT_CONFIG_FILE)
+            f.close()
+        else:
+            sys.stdout.write(PARAMARK_DEFAULT_CONFIG_FILE)
+        
     def parse_conf(self, filename):
-        return
+        # MUST keep consistent with configure file format
+        self.cfg.read(filename)
+
+        section = "runtime"
+        if self.cfg.has_section(section):
+            for k, v in self.cfg.items(section):
+                self.opts[k] = eval(v)
+        
+        # Configuration for each operation
+        oplist = self.opts["metaops"] + self.opts["ioops"]
+        for op in oplist:
+            if self.cfg.has_section(op):
+                self.opts[op] = {}
+                for k, v in self.cfg.items(op):
+                    self.opts[op][k] = eval(v)
+
+        # Override local options
+        for sec in ["meta", "io"]:
+            if self.cfg.has_section(sec + "opts"):
+                for k, v in self.cfg.items(sec + "opts"):
+                    for op in self.opts[sec + "ops"]:
+                        if self.opts[op].has_key(k):
+                            self.opts[op][k] = eval(v)
 
     def store_conf(self, filename="paramark.conf"):
-        # runtime
-        section = "runtime"
-        self.cfg.add_section(section)
-        self.cfg.set(section, "loadconf", False)
-        self.cfg.set(section, "runmode", "auto")
-        self.cfg.set(section, "wdir", "./")
-        self.cfg.set(section, "verbosity", 0)
-        self.cfg.set(section, "dryrun", False)
-        self.cfg.set(section, "nthread", 0)
-
-        # metaop
-        section = "metaop"
-        self.cfg.add_section(section)
-        self.cfg.set(section, "metaops", 0)
-        self.cfg.set(section, "opcnt", 0)
-        
-        # ioop
-        section = "ioop"
-        self.cfg.add_section(section)
-        self.cfg.set(section, "ioops", 0)
-        self.cfg.set(section, "fsize", 0)
-        self.cfg.set(section, "bsize", 0)
-        self.cfg.set(section, "timing-without-open", False)
-        self.cfg.set(section, "timing-without-close", False)
-        
-        # flags
-        section = "flags"
-        self.cfg.add_section(section)
-        self.cfg.set(section, "creat", os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
-        self.cfg.set(section, "open", os.O_RDONLY)
-        self.cfg.set(section, "open_close", os.O_RDONLY)
-        self.cfg.set(section, "read", os.O_RDONLY)
-        self.cfg.set(section, "reread", os.O_RDONLY)
-        self.cfg.set(section, "write", os.O_CREAT | os.O_RDWR)
-        self.cfg.set(section, "rewrite", os.O_CREAT | os.O_RDWR)
-        self.cfg.set(section, "offsetread", os.O_RDONLY)
-        self.cfg.set(section, "offsetwrite", os.O_CREAT | os.O_RDWR)
-        self.cfg.set(section, "fread", 'r')
-        self.cfg.set(section, "freread", 'r')
-        self.cfg.set(section, "fwrite", 'w')
-        self.cfg.set(section, "frewrite", 'w')
-        
-        # mode
-        section = "mode"
-        self.cfg.add_section(section)
-        self.cfg.set(section, "creat", 0600);
-        self.cfg.set(section, "access", os.F_OK);
-        self.cfg.set(section, "chmod", stat.S_IEXEC);
-        self.cfg.set(section, "write", 0600);
-        self.cfg.set(section, "rewrite", 0600);
-
-        with open(filename, "wb") as configfile:
-            self.cfg.write(configfile)
+        return
         
     #
     # Parse/Store options from/to command line
@@ -96,6 +86,196 @@ class ParamarkOptions:
     def parse_argv(self, argv):
         return
 
+#
+# Default configure file
+# Hard-coded for installation convenience
+#
+
+PARAMARK_DEFAULT_CONFIG_FILE = """\
+# ParaMark default benchmarking configuration
+# 2009/12/17
+
+##########################################################################
+# Howto:
+#   * Only modify the values you would like to change
+#   * Lines beginning with '#' or ';' are ignored
+#   * Every value should be an evaluable string by Python.
+#     For example, a path value should be embraced by quotation marks, 
+#     e.g. '/full/path' or "/full/path"
+#     Following the convention in this file will be safe.
+##########################################################################
+
+##########################################################################
+# Global Runtime Options
+##########################################################################
+
+[runtime]
+# Benchmark working directory
+# Don't forget the quotation marks: " "
+wdir = "./"
+
+# Number of concurrent benchmarking thread
+nthread = 0
+
+# Verbosity level (0-5)
+verbosity = 0
+
+# Dryrun, do nothing
+dryrun = False
+
+# Log directory of benchmarking results
+logdir = None
+
+# Metadata operations to be performed
+metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
+"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
+
+# I/O operations to be performed
+ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \
+"fwrite", "frewrite", "offsetread", "offsetwrite"]
+
+[report]
+timing-include-open = True
+timing-include-close = True
+
+##########################################################################
+# Globale options to override local ones
+##########################################################################
+[metaopts]
+# overwrite following local settings
+overwrite=True
+
+# list variables to override
+opcnt = 1000
+
+[ioopts]
+# overwrite following local settings
+overwrite=True
+
+# list variables to override
+# K=1024, M=1048576, G=1073741824, T=1099511627776
+fsize = 10 * 1048576
+bsize = 4 * 1024
+
+##########################################################################
+# Local Operation Options
+#   * Each operation in a seperate section
+##########################################################################
+
+#
+# Options for flags
+# os.O_RDONLY, os.O_WRONLY, os.RDWR, os.O_APPEND, os.O_CREAT, os.O_EXCL
+# os.O_TRUNC or their inclusive OR
+#
+# Options for mode
+# stat.S_ISUID, stat.S_ISGID, stat.S_ENFMT, stat.S_ISVTX, stat.S_IREAD,
+# stat.S_IWRITE, stat.S_IEXEC, stat.S_IRWXU, stat.S_IRUSR, stat.S_IWUSR,
+# stat.S_IXUSR, stat.S_IRWXG, stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP,
+# stat.S_IRWXO, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH or their bitwise OR
+#
+
+# Metadata operation
+[mkdir]
+opcnt = 0
+
+[rmdir]
+opcnt = 0
+
+[creat]
+opcnt = 0
+flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC 
+mode = stat.S_IRUSR | stat.S_IWUSR
+
+[access]
+opcnt = 0
+# os.F_OK, os.R_OK, os.W_OK, os.X_OK or their inclusive OR
+mode = os.F_OK
+
+[open]
+opcnt = 0
+flags = os.O_RDONLY
+
+[open_close]
+opcnt = 0
+flags = os.O_RDONLY
+
+[stat_exist]
+opcnt = 0
+
+[stat_non]
+opcnt = 0
+
+[utime]
+opcnt = 0
+times = None
+
+[chmod]
+opcnt = 0
+chmod = stat.S_IEXEC
+
+[rename]
+opcnt = 0
+
+[unlink]
+opcnt = 0
+
+# I/O operation
+[read]
+fsize = 0
+bsize = 0
+flags = os.O_RDONLY
+
+[reread]
+fsize = 0
+bsize = 0
+flags = os.O_RDONLY
+
+[write]
+fsize = 0
+bsize = 0
+flags = os.O_CREAT | os.O_RDWR
+mode = stat.S_IRUSR | stat.S_IWUSR
+
+[rewrite] 
+fsize = 0
+bsize = 0
+flags = os.O_CREAT | os.O_RDWR
+mode = stat.S_IRUSR | stat.S_IWUSR
+
+[offsetread]
+fsize = 0
+bsize = 0
+flags = os.O_RDONLY
+
+[offsetwrite]
+fsize = 0
+bsize = 0
+flags = os.O_CREAT | os.O_RDWR
+
+[fread]
+fsize = 0
+bsize = 0
+# 'r', 'w', or 'a'
+flags = 'r'
+
+[freread]
+fsize = 0
+bsize = 0
+flags = 'r'
+
+[fwrite]
+fsize = 0
+bsize = 0
+flags = 'w'
+
+[frewrite]
+fsize = 0
+bsize = 0
+flags = 'w'
+"""
+
 if __name__ == "__main__":
-    c = ParamarkOptions()
-    c.store_conf()
+    c = Options()
+    #c.store_conf()
+    c.default_conf("paramark.conf")
+    c.parse_conf("paramark.conf")

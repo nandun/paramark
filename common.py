@@ -1,6 +1,6 @@
 #############################################################################
-# ParaMark:  A Parallel/Distributed File Systems Benchmark
-# Copyright (C) 2009  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
+# ParaMark: A Parallel/Distributed File Systems Benchmark
+# Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 #############################################################################
 
 #
+# common.py
 # Common Constants, Routines and Utilities
 #
 
@@ -85,10 +86,10 @@ def smart_datasize(size):
     return (size/TB, "TB")
 
 def string_hash(str):
-    hash = 0
+    hashv = 0
     for i in range(0, len(str)):
-        hash = hash + ord(str[i]) * (i + 1);
-    return hash
+        hashv = hashv + ord(str[i]) * (i + 1);
+    return hashv
 
 # Adapted from book Graphic Gems
 # Chapter: Nice numbers for graph labels
@@ -155,9 +156,9 @@ def stat_average(listofdata):
     return sum(listofdata)/float(len(listofdata))
 
 # scale funtion
-def smart_scale(minvalue, maxvalue):
-    """ return proper min/max/interval for axis """
-    return (vmin, vmax, vinterval)
+#def smart_scale(minvalue, maxvalue):
+#    """ return proper min/max/interval for axis """
+#    return (vmin, vmax, vinterval)
 
 # class init utility
 def update_opts_kw(dict, restrict, opts, kw):
