@@ -23,16 +23,20 @@
 
 import sys
 import os
+import errno
 import pwd
 import socket
+import time
 import copy
 
-from common import *
+import common
+import options
 import fsop
 
 class Bench():
     """General file system benchmark"""
     def __init__(self, opts=None, **kw):
+        self.config = options.Options()
 
         # Benchmark-time environment variables
         self.uid = os.getuid()
@@ -42,10 +46,36 @@ class Bench():
         self.platform = " ".join(os.uname())
         self.cmdline = " ".join(sys.argv)
         self.environ = copy.deepcopy(os.environ)
+        
+        # runtime passing variables
+        self.rset = []  # run set
 
     def vs(self, msg):
         sys.stderr.write(msg)
+         
+    def load(self, argv):
+        self.opts, errstr = self.config.load(argv)
+        if errstr:
+            sys.stderr("error: %s\n" % errstr)
+            return 1
+        
+        # Post check and preparation
+        if self.opts["logdir"] is None:  # generate random logdir in cwd
+            self.opts["logdir"] = os.path.abspath("./pmark-%s-%s" %
+                (self.user, time.strftime("%j-%H-%M-%S")))
+    
+    def save(self):
+        self.opts["logdir"] = common.smart_makedirs(self.opts["logdir"],
+            self.opts["confirm"])
+        logdir = os.path.abspath(self.opts["logdir"])
+        print logdir
+        
+        # Save used configuration file
+        if self.opts["verbosity"] >= 3:
+            self.vs("Saving applied configurations to %s/config ...\n" 
+                % logdir)
+        self.config.save_conf("%s/config" % logdir)
 
-if __name__ == "__main__":
-    b = Bench()
-    print b.environ
+    def prepare(self):
+        """Setup benchmarking parameters and tests"""
+        return

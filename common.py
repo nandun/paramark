@@ -22,6 +22,8 @@
 #
 
 import sys
+import os
+import errno
 import time
 import math
 
@@ -82,6 +84,24 @@ def smart_datasize(size):
     if size < TB:
         return (size/GB, "GB")
     return (size/TB, "TB")
+
+def smart_makedirs(path, confirm=True):
+    try: os.makedirs(path)
+    except OSError, err:
+        if err.errno == errno.EEXIST:
+            sys.stderr.write("warning: directory %s exists\n" % path)
+            if confirm:
+                ans = raw_input("Overwrite [Y/n/path]? ").lower()
+                if ans == 'n':
+                    sys.stderr.write("Aborting ...\n")
+                    sys.exit(0)
+                elif ans == 'y': pass
+                else: return smart_makedirs(ans, confirm)
+        elif err.errno == os.path.isfile(path):
+            sys.stderr.write("failed to create %s: %s\n" % \
+                (path, os.strerror(err.errno)))
+            sys.exit(1)
+    return path
 
 def string_hash(str):
     hashv = 0
@@ -170,6 +190,4 @@ def update_opts_kw(dict, restrict, opts, kw):
 
     if kw is not None:
         for key in restrict:
-            if dict.has_key(key) and kw.has_key(key):
-                dict[key] = kw[key]
-
+            if dict.has_key(key) and kw.has_key(key): dict[key] = kw[key]
