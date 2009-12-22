@@ -27,13 +27,21 @@ import sys
 
 # ParaMark modules
 import fsbench
+import fsreport
 
 def standalone_main(argv):
     # Get options and configurations
-    mybench = fsbench.Bench()
-    mybench.load(argv)
-    
-    mybench.save()
+    if argv[1] == "report":
+        if len(argv) < 3:
+            sys.stderr.write("usage: %s report DATA_DIR\n" % argv[0])
+            sys.exit(1)
+        myreport = fsreport.Report(argv[2])
+        myreport.produce()
+    else:
+        mybench = fsbench.Bench()
+        mybench.load(argv)
+        mybench.run()
+        mybench.save()
 
 if __name__ == "__main__":
     sys.exit(standalone_main(sys.argv))

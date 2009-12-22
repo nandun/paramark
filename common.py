@@ -56,7 +56,6 @@ def ws(s):
 
 def es(s):
     sys.stderr.write(s)
-    sys.stderr.flush()
 
 def parse_datasize(size):
     """ return the data size in bytes expressed by size string """
@@ -89,16 +88,20 @@ def smart_makedirs(path, confirm=True):
     try: os.makedirs(path)
     except OSError, err:
         if err.errno == errno.EEXIST:
-            sys.stderr.write("warning: directory %s exists\n" % path)
+            sys.stderr.write("warning: directory %s exists\n" 
+                % os.path.abspath(path))
             if confirm:
                 ans = raw_input("Overwrite [Y/n/path]? ").lower()
                 if ans == 'n':
                     sys.stderr.write("Aborting ...\n")
-                    sys.exit(0)
+                    sys.exit(1)
                 elif ans == 'y': pass
                 else: return smart_makedirs(ans, confirm)
-        elif err.errno == os.path.isfile(path):
-            sys.stderr.write("failed to create %s: %s\n" % \
+            else:
+                sys.stderr.write("overwriting %s ...\n"
+                    % os.path.abspath(path))
+        else:
+            sys.stderr.write("failed to create %s, %s\n" % \
                 (path, os.strerror(err.errno)))
             sys.exit(1)
     return path

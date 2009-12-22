@@ -17,6 +17,7 @@
 #############################################################################
 
 #
+# fsopts.py
 # Options and Configurations Parsers
 #
 
@@ -55,28 +56,27 @@ class Options:
             sys.stdout.write(PARAMARK_DEFAULT_CONFIG_STRING)
         
     def parse_conf(self, fp, filename=[]):
-        if fp:
-            self.cfg.readfp(fp)
-        if filename:
-            loaded_files = self.cfg.read(filename)
+        if fp: self.cfg.readfp(fp)
+        if filename: loaded_files = self.cfg.read(filename)
 
         # MUST keep consistent with configure file format
-        for section in ["runtime", "report"]:
+        for section in ["runtime"]:
             if self.cfg.has_section(section):
                 for k, v in self.cfg.items(section):
                     self.opts[k] = eval(v)
         
         # Configuration for each operation
-        oplist = self.opts["metaops"] + self.opts["ioops"]
-        for op in oplist:
+        for op in self.opts["metaops"] + self.opts["ioops"]:
             if self.cfg.has_section(op):
                 self.opts[op] = {}
-                for k, v in self.cfg.items(op):
-                    self.opts[op][k] = eval(v)
+                for k, v in self.cfg.items(op): self.opts[op][k] = eval(v)
 
         # Override local options
         for sec in ["meta", "io"]:
             section = sec + "opts"
+            self.opts[section] = {}
+            for k, v in self.cfg.items(section):
+                self.opts[section][k] = eval(v)
             if self.cfg.has_section(section) and \
                self.cfg.has_option(section, "overwrite") and \
                self.cfg.getboolean(section, "overwrite"):
@@ -169,6 +169,12 @@ class Options:
             sys.stderr.write("Successfull load configuration from %s.\n" %
                 ", ".join(loaded_files))
 
+        # Check options here
+        for o in self.opts["metaops"] + self.opts["ioops"]:
+            if o not in FSOP_META + FSOP_IO:
+                sys.stderr("invalid filesystem operation %s\n" % o)
+                sys.exit(1)
+
         return self.opts, errstr
 
 # OptionParser help string workaround
@@ -217,7 +223,7 @@ class OptionParserHelpFormatter(optparse.IndentedHelpFormatter):
 
 PARAMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark default benchmarking configuration
-# 2009/12/17
+# 2009/12/19
 
 ##########################################################################
 # Howto:
@@ -254,16 +260,13 @@ dryrun = False
 logdir = None
 
 # Metadata operations to be performed
+# Does not support line continuation now, keep option in one line
 metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
 "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
 
 # I/O operations to be performed
 ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \
 "fwrite", "frewrite", "offsetread", "offsetwrite"]
-
-[report]
-timing-include-open = True
-timing-include-close = True
 
 ##########################################################################
 # Globale options to override local ones
@@ -273,7 +276,8 @@ timing-include-close = True
 overwrite=True
 
 # list variables to override
-opcnt = 1000
+opcnt = 10
+factor = 16
 
 [ioopts]
 # overwrite following local settings
@@ -305,47 +309,59 @@ bsize = 4 * 1024
 # Metadata operation
 [mkdir]
 opcnt = 0
+factor = 16
 
 [rmdir]
 opcnt = 0
+factor = 16
 
 [creat]
 opcnt = 0
 flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC 
 mode = stat.S_IRUSR | stat.S_IWUSR
+factor = 16
 
 [access]
 opcnt = 0
 # os.F_OK, os.R_OK, os.W_OK, os.X_OK or their inclusive OR
 mode = os.F_OK
+factor = 16
 
 [open]
 opcnt = 0
 flags = os.O_RDONLY
+factor = 16
 
 [open_close]
 opcnt = 0
 flags = os.O_RDONLY
+factor = 16
 
 [stat_exist]
 opcnt = 0
+factor = 16
 
 [stat_non]
 opcnt = 0
+factor = 16
 
 [utime]
 opcnt = 0
 times = None
+factor = 16
 
 [chmod]
 opcnt = 0
 chmod = stat.S_IEXEC
+factor = 16
 
 [rename]
 opcnt = 0
+factor = 16
 
 [unlink]
 opcnt = 0
+factor = 16
 
 # I/O operation
 [read]
