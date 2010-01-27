@@ -36,8 +36,18 @@ import fsload
 
 class Bench():
     """General file system benchmark"""
-    def __init__(self, opts=None, **kw):
+    def __init__(self, argv, **kw):
         self.config = fsopts.Options()
+        self.opts, errstr = self.config.load(argv)
+        if errstr:
+            sys.stderr("error: %s\n" % errstr)
+            sys.exit(1)
+
+        # Post check and preparation
+        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
+        if self.opts["logdir"] is None:  # generate random logdir in cwd
+            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
+                (self.user, time.strftime("%j-%H-%M-%S")))
 
         # Benchmark-time environment variables
         self.uid = os.getuid()
@@ -47,24 +57,14 @@ class Bench():
         self.platform = " ".join(os.uname())
         self.cmdline = " ".join(sys.argv)
         self.environ = copy.deepcopy(os.environ)
-        
+        self.mountpoint = common.get_mountpoint(self.opts["wdir"])
         # runtime passing variables
         self.rset = []  # run set
 
     def vs(self, msg):
         sys.stderr.write(msg)
          
-    def load(self, argv):
-        self.opts, errstr = self.config.load(argv)
-        if errstr:
-            sys.stderr("error: %s\n" % errstr)
-            return 1
-
-        # Post check and preparation
-        if self.opts["logdir"] is None:  # generate random logdir in cwd
-            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
-                (self.user, time.strftime("%j-%H-%M-%S")))
-        
+    def load(self):
         self.metaload = fsload.MetaLoad(self.opts)
         self.ioload = fsload.IOLoad(self.opts)
         self.metaload.produce()
@@ -107,7 +107,8 @@ class Bench():
         # Save used configuration file
         self.config.save_conf("%s/fsbench.conf" % logdir)
         if self.opts["verbosity"] >= 1:
-            self.vs("applied configurations saved to %s/fsbench.conf\n" % logdir)
+            self.vs("applied configurations saved to %s/fsbench.conf\n" 
+                % logdir)
         
         # Save results
         import fsdata
@@ -115,15 +116,14 @@ class Bench():
 
         self.save_runtime()
         for r in self.rset:
-            r.res = map(lambda (s,e):(s-self.start,e-self.start), r.res)
+            data = map(lambda (s,e):(s-self.start,e-self.start), r.res)
             if self.opts["verbosity"] >= 4:
-                self.vs("saving %s res=%s\n" % (r.name, r.res))
-            self.db.rawdata_ins(r.name, self.db.obj2str(r.res))
+                self.vs("saving %s res=%s\n" % (r.name, data))
+            #TODO: test id
+            self.db.rawdata_ins(r.name, 0, data)
         self.db.close()
         if self.opts["verbosity"] >= 1:
             self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
-
-        sys.stdout.write("Done! See %s for reports\n" % logdir)
 
     def save_runtime(self):
         from version import PARAMARK_VERSION, PARAMARK_DATE
@@ -136,7 +136,8 @@ class Bench():
         self.db.runtime_ins("uid", "%s" % self.uid)
         self.db.runtime_ins("pid", "%s" % self.pid)
         self.db.runtime_ins("cmdline", self.cmdline)
-        #TODO: save environ as string
-        self.db.runtime_ins("environ", self.db.obj2str(self.environ))
+        self.db.runtime_ins("environ", self.environ, True)
+        self.db.runtime_ins("mountpoint", self.mountpoint)
+        self.db.runtime_ins("wdir", self.opts["wdir"])
         self.db.commit()
 # EOF

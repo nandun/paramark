@@ -172,8 +172,7 @@ class Options:
         # Check options here
         for o in self.opts["metaops"] + self.opts["ioops"]:
             if o not in FSOP_META + FSOP_IO:
-                sys.stderr("invalid filesystem operation %s\n" % o)
-                sys.exit(1)
+                errstr = "invalid filesystem operation %s" % o
 
         return self.opts, errstr
 

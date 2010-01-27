@@ -18,11 +18,14 @@
 
 #
 # fsdata.py
-# File System Benchmark Data Persistence
+# File System Benchmark Data Persistence and Processing
 #
 
 import sqlite3
 import cPickle
+import numpy
+
+import fsop
 
 class Database:
     """Store/Retrieve benchmark results data"""
@@ -51,30 +54,59 @@ class Database:
         # rawdata
         self.cur.execute("DROP TABLE IF EXISTS rawdata")
         self.cur.execute("CREATE TABLE IF NOT EXISTS rawdata"
-            "(item TEXT, value BLOB)")
+            "(oper TEXT, optype INTEGER, tid INTEGER, data BLOB)")
         self.tables.append("rawdata")
 
     def drop_tables(self):
-        for tables in self.tables:
+        for table in self.tables:
             self.cur.execute("DROP TABLE IF EXISTS %s" % table)
 
     def commit(self):
         self.db.commit()
-    
+            
     # Pickle
     def obj2str(self, obj):
         return cPickle.dumps(obj)
     
     def str2obj(self, objs):
-        return cPickle.loads(objs)
+        return cPickle.loads(str(objs))
 
     # Table Operations
-    def runtime_ins(self, item, value):
+    def runtime_ins(self, item, value, pickleValue=False):
+        if pickleValue: value = self.obj2str(value)
         self.cur.execute("INSERT INTO runtime VALUES (?,?)", (item, value))
     
     def runtime_sel(self, fields="*"):
-        self.cur.execute("SELECT %s from runtime" % fields)
+        self.cur.execute("SELECT %s FROM runtime" % fields)
         return self.cur.fetchall()
     
-    def rawdata_ins(self, item, value):
-        self.cur.execute("INSERT INTO rawdata VALUES (?,?)", (item, value))
+    def rawdata_ins(self, oper, tid, data):
+        if oper in fsop.FSOP_META: optype = 1
+        else: optype = 0
+        data = self.obj2str(data)
+        self.cur.execute("INSERT INTO rawdata VALUES (?,?,?,?)", 
+            (oper, optype, tid, data))
+    
+    def rawdata_sel(self, columns, **where):
+        qstr = "SELECT %s from rawdata" % columns
+        wstr = " and ".join(map(lambda k:"%s=%s" % (k, where[k]),
+            where.keys()))
+        if wstr != "": qstr = "%s WHERE %s" % (qstr, wstr)
+        self.cur.execute(qstr)
+        res = self.cur.fetchall()
+        res = map(lambda (o,i,d):(o,i,self.str2obj(d)), res)
+        return res
+
+    def metadata_stats(self):
+        res = []
+        self.cur.execute("SELECT oper,tid,data FROM rawdata WHERE optype=1")
+        for oper, tid, rdata in self.cur.fetchall():
+            data = map(lambda (s,e):e-s, self.str2obj(rdata))
+            nops = len(data)
+            esum = numpy.sum(data)
+            eavg = numpy.average(data)
+            estddev = numpy.std(data)
+            thput = nops/esum
+            res.append((oper, tid, rdata, data, nops, esum, eavg, estddev,
+            thput))
+        return res

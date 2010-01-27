@@ -194,3 +194,15 @@ def update_opts_kw(dict, restrict, opts, kw):
     if kw is not None:
         for key in restrict:
             if dict.has_key(key) and kw.has_key(key): dict[key] = kw[key]
+
+# filesystem utility
+def get_mountpoint(path):
+    """Get the mountpoint where the path belongs to"""
+    mountpoint = None
+    fp = open("/etc/mtab", "r")
+    for l in fp.readlines():
+        if path.startswith(l.strip().split(" ")[1]):
+            # TODO: startswith "/"
+            mountpoint = l.strip()
+    fp.close()
+    return mountpoint

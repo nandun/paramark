@@ -35,13 +35,15 @@ def standalone_main(argv):
         if len(argv) < 3:
             sys.stderr.write("usage: %s report DATA_DIR\n" % argv[0])
             sys.exit(1)
-        myreport = fsreport.Report(argv[2])
+        myreport = fsreport.HTMLReport(argv[2])
         myreport.produce()
     else:
-        mybench = fsbench.Bench()
-        mybench.load(argv)
+        mybench = fsbench.Bench(argv)
+        mybench.load()
         mybench.run()
         mybench.save()
+        myreport = fsreport.HTMLReport(mybench.opts["logdir"])
+        myreport.produce()
 
 if __name__ == "__main__":
     sys.exit(standalone_main(sys.argv))

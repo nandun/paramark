@@ -27,22 +27,32 @@ import time
 import shutil
 import ConfigParser
 import StringIO
+import numpy
+import HTMLgen as html
 
 import common
+import fsop
 import fsdata
+import fsplot
 
-class Report():
+class HTMLReport():
     def __init__(self, datadir):
-        if not os.path.exists(datadir):
-            sys.stderr.write("data directory %s does not exist\n" % datadir)
-            sys.exit(1)
-
         self.datadir = os.path.abspath(datadir)
         self.db = fsdata.Database("%s/fsbench.db" % self.datadir, False)
+        self.plot = fsplot.Plot()
         
+        # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
         if not os.path.exists(self.rdir):
             common.smart_makedirs(self.rdir)
+        # figures dir
+        self.fdir = os.path.abspath("%s/figures" % self.rdir)
+        if not os.path.exists(self.fdir):
+            common.smart_makedirs(self.fdir)
+        # data dir
+        self.ddir = os.path.abspath("%s/data" % self.rdir)
+        if not os.path.exists(self.ddir):
+            common.smart_makedirs(self.ddir)
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()
@@ -61,91 +71,158 @@ class Report():
         section = "report"
         if cfg.has_section(section):
             for k, v in cfg.items(section): self.opts[k] = eval(v)
+        
+        self.opts["html"] = {}
+        section = "html"
+        if cfg.has_section(section):
+            for k, v in cfg.items(section): self.opts[section][k] = eval(v)
+
+        
+        # HTML default settings
+        self.FILENAME = "report.html"
+        self.TITLE = "ParaMark Filesytem Benchmark Report"
+        self.TITLE_SIZE = 2
+        self.SECTION_SIZE = self.TITLE_SIZE + 1
+        self.SUBSECTION_SIZE = self.SECTION_SIZE + 1
+
+        # Turn off html.verbose
+        html.PRINTECHO = 0 
+        
+        self.doc = html.SimpleDocument(title=self.TITLE)
 
     def __del__(self):
         self.db.close()
-    
-    def produce(self):
-        eval("self.%s()" % self.opts["format"])
 
-    def html(self):
-        import HTMLgen
-        HTMLgen.PRINTECHO = 0 # turn off HTMLgen verbose
+    # HTML sections
+    def heading(self):
+        self.doc.append(html.Heading(self.TITLE_SIZE, self.TITLE))
         
-        start = (time.localtime(), common.timer())
-        
-        SECTION = 2
-        SUBSECTION = 3
-        # heanding
-        doc = HTMLgen.SimpleDocument(
-            title="ParaMark Filesytem Benchmark Report")
-        heading = HTMLgen.Heading(SECTION, 
-            "ParaMark Filesytem Benchmark Report")
-        doc.append(heading)
-
-        heading = HTMLgen.Heading(SUBSECTION, "Runtime")
-        doc.append(heading)
-        
+    def runtime_summary(self):
         runtime = {}
         for i, v in self.db.runtime_sel(): runtime[i] = v
-        text = HTMLgen.Text("ParaMark v%s, %s" 
-            % (runtime["version"], runtime["date"]))
-        text.append(HTMLgen.BR())
-        text.append("%s" % (runtime["platform"]))
-        text.append(HTMLgen.BR())
-        text.append("%s (%s)" % (runtime["user"], runtime["uid"]))
-        text.append(HTMLgen.BR())
-        text.append("%s (%s)" % (runtime["cmdline"], runtime["pid"]))
-        # TODO: environ?
-        text.append(HTMLgen.BR())
-        text.append("%s -- %s (%.5f seconds)" 
+        table = html.Table(tabletitle=None,
+            heading=[], border=0, width="100%", 
+            cell_padding=2, cell_spacing=0,
+            column1_align="left", cell_align="left")
+        table.body = []
+        table.body.append([html.Emphasis("ParaMark"), 
+            html.Text(": v%s, %s" % (runtime["version"], runtime["date"]))])
+        table.body.append([html.Emphasis("Platform"), 
+            html.Text(": %s" % runtime["platform"])])
+        table.body.append([html.Emphasis("Target"), 
+            html.Text(": %s (%s)" % (runtime["wdir"], 
+                runtime["mountpoint"]))])
+        table.body.append([html.Emphasis("Time"), 
+            html.Text(": %s --- %s (%.5f seconds)" 
             % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
                time.localtime(eval(runtime["start"])))),
               (time.strftime("%a %b %d %Y %H:%M:%S %Z",
                time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"]))))
-        doc.append(text)
-        
-        heading = HTMLgen.Heading(SUBSECTION, "Configuration and Data")
-        doc.append(heading)
-        
-        text = HTMLgen.Text("Configuration ")
-        text.append(HTMLgen.Href("../fsbench.conf", "fsbench.conf"))
-        text.append(" was applied and data is stored in ")
-        text.append(HTMLgen.Href("../fsbench.db", "fsbench.db"))
-        text.append(" using ")
-        text.append(HTMLgen.Href("http://www.sqlite.org", "SQLite3 format"))
-        text.append(".")
-        doc.append(text)
+              (eval(runtime["end"]) - eval(runtime["start"]))))])
+        table.body.append([html.Emphasis("User"), 
+            html.Text(": %s (%s)" % (runtime["user"], runtime["uid"]))])
+        table.body.append([html.Emphasis("Command line"), 
+            html.Text(": %s" % runtime["cmdline"])])
+        datastr = html.Text(":")
+        datastr.append(html.Href("../fsbench.conf", "fsbench.conf"))
+        table.body.append([html.Emphasis("Configuration"), datastr])
+        datastr = html.Text(":")
+        datastr.append(html.Href("../fsbench.db", "fsbench.db"))
+        table.body.append([html.Emphasis("Results Database"), datastr])
 
-        # Generate Results
+        self.doc.append(html.Heading(self.SECTION_SIZE, "Runtime Summary"))
+        self.doc.append(table)
+
+    def metadata(self):
+        table = html.Table(tabletitle=None,
+            heading=["Oper", "Test", "#ops", "Elapsed", 
+                     "", "", "", "Throughput"],
+            heading_align="right",
+            border=0, width="100%", cell_padding=0, cell_spacing=2,
+            column1_align="right", cell_align="right")
+
+        table.body = []
+        table.body.append(map(lambda s:html.Emphasis(s),
+            ["", "", "", 
+             "Total", "Avg.", "StdDev", "Dist.",
+             "#ops/sec"]))
         
+        for oper, tid, rdata, nops, esum, eavg, estddev, thput in \
+            self.db.metadata_stats():
+            opts = "%s" % tid
+            
+            # plot data
+            # ATTENTION: choose end stamp as x-coordinates
+            xdata = map(lambda (s,e):e, rdata)
+            ydata = data
+            self.plot.points_chart(xdata, ydata,
+                title="%s performance with %s" 
+                    % (oper, opts),
+                prefix="%s/%s-%s" % (self.fdir, oper, opts))
+            
+            image = html.Href("figures/%s-%s.png" % (oper, opts), 
+                html.Image(border=1, align="center",
+                width=20,height=20,
+                filename="%s-%s.png" % (oper, opts),
+                src="figures/%s-%s.png" % (oper, opts)))
+
+            table.body.append([oper, opts, nops, summ, avg, stddev, image,
+            thput])
+
+        self.doc.append(html.Heading(self.SECTION_SIZE, "Runtime Summary"))
+        self.doc.append(table)
+
+    def produce(self):
+        start = (time.localtime(), common.timer())
+        
+        self.heading()
+        self.runtime_summary()
+        self.metadata()
+
         end = (time.localtime(), common.timer())
         
-        # footnote
-        text = HTMLgen.Small()
-        text.append(HTMLgen.Emphasis(
+        # output
+        self.doc.write("%s/%s" % (self.rdir, self.FILENAME))
+        sys.stdout.write("Report generated to %s.\n" % self.rdir)
+    
+    def html_footnote(self, start, end):
+        text = html.Small()
+        text.append(html.Emphasis(
             "Generated at %s, took %.5f seconds, using "
             % (time.strftime("%a %b %d %Y %H:%M:%S %Z", end[0]),
               (end[1] - start[1]))))
         
-        text.append(HTMLgen.Emphasis(HTMLgen.Href("../report.conf", 
+        text.append(html.Emphasis(html.Href("../report.conf", 
             "report.conf")))
         text.append(" by ")
         from version import PARAMARK_VERSION, PARAMARK_DATE, PARAMARK_WEB
-        text.append(HTMLgen.Emphasis(HTMLgen.Href(PARAMARK_WEB, "ParaMark")))
-        text.append(HTMLgen.Emphasis(" v%s, %s.\n" 
+        text.append(html.Emphasis(html.Href(PARAMARK_WEB, "ParaMark")))
+        text.append(html.Emphasis(" v%s, %s.\n" 
             % (PARAMARK_VERSION, PARAMARK_DATE)))
-        para = HTMLgen.Paragraph(text)
-        doc.append(para)
-        
-        # output
-        doc.write("%s/report.html" % self.rdir)
-        if not os.path.exists("%s/index.html" % self.rdir):
-            os.symlink("%s/report.html" % self.rdir,
-                "%s/index.html" % self.rdir)
-        sys.stdout.write("Report generated to %s.\n" % self.rdir)
-                
+        para = html.Paragraph(text)
+        return para
+
+#########################################################################
+# Auxiliary Utilities
+#########################################################################
+def html_fighref(filename, figsdir="figures"):
+    """return an HTML href suffix string link to the target figure
+    file"""
+    basename = os.path.basename(filename)
+    return html.Href("%s/%s" % (figsdir, basename),
+        "%s" % basename.split(".")[-1].upper())
+
+def html_tabhref(filename, text="HTML", tabsdir="tables"):
+    """return an HTML href suffix string link to the target table 
+    file"""
+    basename = os.path.basename(filename)
+    return html.Href("%s/%s" % (tabsdir, basename), text)
+
+def html_sub(maintxt, subtxt):
+    t = html.Text(maintxt)
+    t.append(html.Sub(subtxt))
+    return t
+
 ##########################################################################
 # Default configure string
 # Hard-coded for installation convenience
@@ -162,4 +239,5 @@ format = 'html'
 [html]
 # plot tools, 'gchar', 'gnuplot', or 'matplotlib'
 plot = 'gnuplot'
+imageformat = 'png'
 """
