@@ -29,7 +29,7 @@ import textwrap
 import ConfigParser
 import StringIO
 
-from fsop import FSOP_META, FSOP_IO
+from oper import FSOP_META, FSOP_IO
 
 class Options:
     """Store/Retrieve options from/to configure files or command arguments
@@ -124,6 +124,10 @@ class Options:
             dest="logdir", metavar="PATH", default=None,
             help="log directory (default: auto)")
         
+        parser.add_option("-t", "--threads", action="store", type="int",
+            dest="nthreads", metavar="NUM", default=1,
+            help="number of current threads (default: 1)")
+        
         parser.add_option("-f", "--force", action="store_false",
             dest="confirm", default=True,
             help="Force to go, do not confirm (default: disabled)")
@@ -159,7 +163,8 @@ class Options:
         # Load from command options
         # section runtime
         section = "runtime"
-        for o in ["wdir", "logdir", "confirm", "verbosity", "dryrun"]: 
+        for o in ["wdir", "logdir", "nthreads", 
+            "confirm", "verbosity", "dryrun"]: 
             # refer above for load options
             if opts.__dict__[o] is not None:
                 self.cfg.set(section, o, "%s" % opts.__dict__[o])
@@ -222,7 +227,7 @@ class OptionParserHelpFormatter(optparse.IndentedHelpFormatter):
 
 PARAMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark default benchmarking configuration
-# 2009/12/19
+# 2010/01/28
 
 ##########################################################################
 # Howto:
@@ -243,7 +248,7 @@ PARAMARK_DEFAULT_CONFIG_STRING = """\
 wdir = "./"
 
 # Number of concurrent benchmarking thread
-nthread = 0
+nthreads = 1
 
 # Ask user whether to proceed on critical situations
 confirm = True

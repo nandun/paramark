@@ -95,7 +95,7 @@ def smart_makedirs(path, confirm=True):
                 if ans == 'n':
                     sys.stderr.write("Aborting ...\n")
                     sys.exit(1)
-                elif ans == 'y': pass
+                elif ans == "" or ans == 'y': pass
                 else: return smart_makedirs(ans, confirm)
             else:
                 sys.stderr.write("overwriting %s ...\n"

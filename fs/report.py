@@ -27,32 +27,73 @@ import time
 import shutil
 import ConfigParser
 import StringIO
+
 import numpy
 import HTMLgen as html
 
-import common
-import fsop
-import fsdata
-import fsplot
+import version 
+import utils
+from common import *
+import oper
+import data
+import plot
 
-class HTMLReport():
+class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
-        self.db = fsdata.Database("%s/fsbench.db" % self.datadir, False)
-        self.plot = fsplot.Plot()
+        self.db = data.Database("%s/fsbench.db" % self.datadir, False)
+        self.plot = plot.Plot()
+    
+    def __del__(self):
+        self.db.close()
+
+    def get_runtime(self):
+        runtime = {}
+        for i, v in self.db.runtime_sel(): runtime[i] = v
+        return runtime
+
+    def meta_stat(self, figdir=None):
+        return self.meta_stat_thread(0, 21570, 0, 0, "mkdir", figdir)
+
+    def meta_stat_thread(self, hostid, pid, tid, testid, oper, figdir=None):
+        """Statistics of performance for a single thread"""
+        res = []
+        oper, data = self.db.meta_sel("oper,data", hostid=hostid, pid=pid,
+            tid=tid, testid=testid, oper=oper)
+        dat = map(lambda (s,e):e-s, self.str2obj(data))
+        nops = len(dat)
+        esum = numpy.sum(dat)
+        eavg = numpy.average(dat)
+        estddev = numpy.std(dat)
+        thput = nops/esum
+        
+        figpath = None
+        if figdir is not None:
+            # plot data
+            # ATTENTION: choose end stamp as x-coordinates
+            xdata, ydata = map(lambda (s,e):e, data), dat
+            figpath = self.plot.points_chart(xdata, ydata,
+                title="%s performance with %s" % (oper, testid),
+                prefix="%s/%s-%s" % (figdir, oper, testid))
+        
+        return nops, esum, eavg, estddev, thput, figpath
+        
+class HTMLReport(Report):
+    def __init__(self, datadir):
+        Report.__init__(self, datadir)
         
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
         if not os.path.exists(self.rdir):
-            common.smart_makedirs(self.rdir)
+            utils.smart_makedirs(self.rdir)
         # figures dir
         self.fdir = os.path.abspath("%s/figures" % self.rdir)
         if not os.path.exists(self.fdir):
-            common.smart_makedirs(self.fdir)
+            utils.smart_makedirs(self.fdir)
         # data dir
         self.ddir = os.path.abspath("%s/data" % self.rdir)
         if not os.path.exists(self.ddir):
-            common.smart_makedirs(self.ddir)
+            utils.smart_makedirs(self.ddir)
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()
@@ -90,19 +131,14 @@ class HTMLReport():
         
         self.doc = html.SimpleDocument(title=self.TITLE)
 
-    def __del__(self):
-        self.db.close()
-
     # HTML sections
     def heading(self):
         self.doc.append(html.Heading(self.TITLE_SIZE, self.TITLE))
         
     def runtime_summary(self):
-        runtime = {}
-        for i, v in self.db.runtime_sel(): runtime[i] = v
+        runtime = self.get_runtime()
         table = html.Table(tabletitle=None,
-            heading=[], border=0, width="100%", 
-            cell_padding=2, cell_spacing=0,
+            heading=[], border=0, width="100%", cell_padding=2, cell_spacing=0,
             column1_align="left", cell_align="left")
         table.body = []
         table.body.append([html.Emphasis("ParaMark"), 
@@ -147,60 +183,50 @@ class HTMLReport():
              "Total", "Avg.", "StdDev", "Dist.",
              "#ops/sec"]))
         
-        for oper, tid, rdata, nops, esum, eavg, estddev, thput in \
-            self.db.metadata_stats():
-            opts = "%s" % tid
-            
-            # plot data
-            # ATTENTION: choose end stamp as x-coordinates
-            xdata = map(lambda (s,e):e, rdata)
-            ydata = data
-            self.plot.points_chart(xdata, ydata,
-                title="%s performance with %s" 
-                    % (oper, opts),
-                prefix="%s/%s-%s" % (self.fdir, oper, opts))
-            
-            image = html.Href("figures/%s-%s.png" % (oper, opts), 
-                html.Image(border=1, align="center",
-                width=20,height=20,
-                filename="%s-%s.png" % (oper, opts),
-                src="figures/%s-%s.png" % (oper, opts)))
+        nops, esum, eavg, estddev, thput, fig = self.meta_stat(self.fdir)
+        figbasename = os.path.basename(fig)
+        image = html.Href("figures/%s" % fig, 
+            html.Image(border=1, align="center",
+            width=20,height=20,
+            filename=figbasename,
+            src="figures/%s" % fig))
 
-            table.body.append([oper, opts, nops, summ, avg, stddev, image,
+        table.body.append(["mkdir", 0, nops, esum, eavg, estddev, image,
             thput])
 
         self.doc.append(html.Heading(self.SECTION_SIZE, "Runtime Summary"))
         self.doc.append(table)
 
-    def produce(self):
-        start = (time.localtime(), common.timer())
-        
-        self.heading()
-        self.runtime_summary()
-        self.metadata()
-
-        end = (time.localtime(), common.timer())
-        
-        # output
-        self.doc.write("%s/%s" % (self.rdir, self.FILENAME))
-        sys.stdout.write("Report generated to %s.\n" % self.rdir)
-    
-    def html_footnote(self, start, end):
+    def footnote(self, start, end):
         text = html.Small()
         text.append(html.Emphasis(
             "Generated at %s, took %.5f seconds, using "
             % (time.strftime("%a %b %d %Y %H:%M:%S %Z", end[0]),
               (end[1] - start[1]))))
         
-        text.append(html.Emphasis(html.Href("../report.conf", 
-            "report.conf")))
+        text.append(html.Emphasis(html.Href("../report.conf", "report.conf")))
         text.append(" by ")
-        from version import PARAMARK_VERSION, PARAMARK_DATE, PARAMARK_WEB
-        text.append(html.Emphasis(html.Href(PARAMARK_WEB, "ParaMark")))
+        text.append(html.Emphasis(html.Href(version.PARAMARK_WEB, "ParaMark")))
         text.append(html.Emphasis(" v%s, %s.\n" 
-            % (PARAMARK_VERSION, PARAMARK_DATE)))
-        para = html.Paragraph(text)
-        return para
+            % (version.PARAMARK_VERSION, version.PARAMARK_DATE)))
+        
+        self.doc.append(html.Paragraph(text))
+    
+    def produce(self):
+        start = (time.localtime(), timer())
+        
+        self.heading()
+        self.runtime_summary()
+        self.metadata()
+
+        end = (time.localtime(), timer())
+
+        self.footnote(start, end)
+        
+        # output
+        self.doc.write("%s/%s" % (self.rdir, self.FILENAME))
+        sys.stdout.write("Report generated to %s.\n" % self.rdir)
+    
 
 #########################################################################
 # Auxiliary Utilities

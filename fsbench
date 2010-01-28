@@ -19,7 +19,7 @@
 #############################################################################
 
 #
-# fsbench.py
+# fsbench
 # General File System Benchmark
 #
 
@@ -47,12 +47,6 @@ class Bench():
             sys.stderr("error: %s\n" % errstr)
             sys.exit(1)
 
-        # Post check and preparation
-        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
-        if self.opts["logdir"] is None:  # generate random logdir in cwd
-            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
-                (self.user, time.strftime("%j-%H-%M-%S")))
-
         # Benchmark runtime environment
         self.runtime = {}
         self.runtime["version"] = version.PARAMARK_VERSION
@@ -66,6 +60,13 @@ class Bench():
         self.runtime["environ"] = copy.deepcopy(os.environ)
         self.runtime["mountpoint"] = utils.get_mountpoint(self.opts["wdir"])
         self.runtime["wdir"] = self.opts["wdir"]
+        
+        # Post check and preparation
+        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
+        if self.opts["logdir"] is None:  # generate random logdir in cwd
+            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
+                (self.runtime["user"], time.strftime("%j-%H-%M-%S")))
+
 
         # runtime passing variables
         self.threads = []  # run set
@@ -76,10 +77,11 @@ class Bench():
     def load(self):
         self.opts["hostid"] = 0
         self.opts["pid"] = os.getpid()
+        self.opts["testid"] = 0
         self.opts["verbose"] = False
         if self.opts["verbosity"] >= 3:
             self.opts["verbose"] = True
-        for i in range(0, self.opts["nthread"]):
+        for i in range(0, self.opts["nthreads"]):
             self.opts["tid"] = i
             self.threads.append(fs.bench.BenchThread(self.opts))
 
@@ -91,8 +93,6 @@ class Bench():
 
         for t in self.threads:
             t.join()
-            for o in t.opset:
-                print o.res
         
         if self.opts["dryrun"]:
             sys.stdout.write("Dryrun, nothing executed.\n")
@@ -103,7 +103,8 @@ class Bench():
         self.runtime["end"] = "%r" % self.end
 
     def save(self):
-        if self.opts["dryrun"]: return
+        if self.opts["dryrun"]:
+            return
         
         # Intial log directory and database
         self.opts["logdir"] = utils.smart_makedirs(self.opts["logdir"],
@@ -119,7 +120,7 @@ class Bench():
         # Save results
         self.db = fs.data.Database("%s/fsbench.db" % logdir, True)
         self.db.runtime_ins(self.runtime)
-        self.db.data_ins(self.rset, self.start)
+        self.db.data_ins(self.threads, self.start)
         self.db.close()
 
         if self.opts["verbosity"] >= 1:
@@ -141,7 +142,7 @@ def standalone_main(argv):
         mybench = Bench(argv)
         mybench.load()
         mybench.run()
-        #mybench.save()
+        mybench.save()
         #myreport = fsreport.HTMLReport(mybench.opts["logdir"])
         #myreport.produce()
 
