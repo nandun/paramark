@@ -114,7 +114,7 @@ class Database:
                         (t.hostid, t.pid, t.tid, t.testid, o.name, data))
                 elif o.type == OPTYPE_IO:
                     self.cur.execute("INSERT INTO io VALUES (?,?,?,?,?,?)", 
-                        (r.hostid, r.pid, r.tid, t.testid, o.name, data))
+                        (t.hostid, t.pid, t.tid, t.testid, o.name, data))
 
     def meta_sel(self, columns, **where):
         qstr = "SELECT %s FROM meta" % columns
@@ -125,3 +125,58 @@ class Database:
         res = self.cur.fetchall()
         res = map(lambda (o,i,d):(o,i,self.str2obj(d)), res)
         return res
+    
+    def meta_get_testids(self):
+        qstr = "SELECT testid FROM meta GROUP BY testid"
+        self.cur.execute(qstr)
+        return map(lambda (v,):v, self.cur.fetchall())
+
+    def meta_get_opers(self, **where):
+        qstr = "SELECT oper FROM meta %s GROUP BY oper"
+        wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
+            where.keys()))
+        if wstr != "": wstr = "WHERE %s" % wstr
+        qstr = qstr % wstr
+        self.cur.execute(qstr)
+        return map(lambda (v,):str(v), self.cur.fetchall())
+    
+    def meta_get_data(self, **where):
+        qstr = "SELECT data FROM meta %s"
+        wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
+            where.keys()))
+        if wstr != "": wstr = "WHERE %s" % wstr
+        qstr = qstr % wstr
+        self.cur.execute(qstr)
+        return map(lambda (v,):self.str2obj(v), self.cur.fetchall())
+    
+    def meta_get_tid_and_data(self, **where):
+        qstr = "SELECT tid,data FROM meta %s"
+        wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
+            where.keys()))
+        if wstr != "": wstr = "WHERE %s" % wstr
+        qstr = qstr % wstr
+        self.cur.execute(qstr)
+        return map(lambda (v,d):(v,self.str2obj(d)), self.cur.fetchall())
+    
+    def io_get_testids(self):
+        qstr = "SELECT testid FROM io GROUP BY testid"
+        self.cur.execute(qstr)
+        return map(lambda (v,):v, self.cur.fetchall())
+    
+    def io_get_opers(self, **where):
+        qstr = "SELECT oper FROM io %s GROUP BY oper"
+        wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
+            where.keys()))
+        if wstr != "": wstr = "WHERE %s" % wstr
+        qstr = qstr % wstr
+        self.cur.execute(qstr)
+        return map(lambda (v,):str(v), self.cur.fetchall())
+    
+    def io_get_data(self, **where):
+        qstr = "SELECT data FROM io %s"
+        wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
+            where.keys()))
+        if wstr != "": wstr = "WHERE %s" % wstr
+        qstr = qstr % wstr
+        self.cur.execute(qstr)
+        return map(lambda (v,):self.str2obj(v), self.cur.fetchall())

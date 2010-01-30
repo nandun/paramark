@@ -28,8 +28,10 @@ import os
 import errno
 import pwd
 import socket
+import random
 import time
 import copy
+import threading
 
 import version
 import utils
@@ -62,12 +64,10 @@ class Bench():
         self.runtime["wdir"] = self.opts["wdir"]
         
         # Post check and preparation
-        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
         if self.opts["logdir"] is None:  # generate random logdir in cwd
             self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
                 (self.runtime["user"], time.strftime("%j-%H-%M-%S")))
-
-
+        
         # runtime passing variables
         self.threads = []  # run set
 
@@ -81,13 +81,18 @@ class Bench():
         self.opts["verbose"] = False
         if self.opts["verbosity"] >= 3:
             self.opts["verbose"] = True
+        
+        self.thread_sync = fs.bench.ThreadSync(self.opts["nthreads"])
         for i in range(0, self.opts["nthreads"]):
             self.opts["tid"] = i
-            self.threads.append(fs.bench.BenchThread(self.opts))
+            self.threads.append(fs.bench.BenchThread(self.opts,
+                self.thread_sync))
 
     def run(self):
         self.start = utils.timer()
         
+        # shuffle threads to avoid scheduling effect
+        #random.shuffle(self.threads)
         for t in self.threads:
             t.start()
 
@@ -143,8 +148,8 @@ def standalone_main(argv):
         mybench.load()
         mybench.run()
         mybench.save()
-        #myreport = fsreport.HTMLReport(mybench.opts["logdir"])
-        #myreport.produce()
+        myreport = fs.report.HTMLReport(mybench.opts["logdir"])
+        myreport.produce()
 
 if __name__ == "__main__":
     sys.exit(standalone_main(sys.argv))

@@ -29,11 +29,14 @@ class Plot:
         self.terminal = "png"
     
     def points_chart(self, xdata, ydata, prefix="points_chart",
-        title="points_chart"):
+        title="points_chart", xlabel="x label", ylabel="y label"):
         filepath = "%s.%s" % (prefix, self.terminal)
         self.c.reset()
+        self.c.title(title)
+        self.c.xlabel(xlabel)
+        self.c.ylabel(ylabel)
         self.c("set terminal %s" % self.terminal)
-        self.c("set output %s" % filepath)
+        self.c("set output '%s'" % filepath)
         self.c("set data style points")
         plotdata = zip(xdata, ydata)
         self.c.plot(plotdata)

@@ -69,7 +69,8 @@ class Options:
         for op in self.opts["metaops"] + self.opts["ioops"]:
             if self.cfg.has_section(op):
                 self.opts[op] = {}
-                for k, v in self.cfg.items(op): self.opts[op][k] = eval(v)
+                for k, v in self.cfg.items(op):
+                    self.opts[op][k] = eval(v)
 
         # Override local options
         for sec in ["meta", "io"]:
@@ -169,6 +170,7 @@ class Options:
             if opts.__dict__[o] is not None:
                 self.cfg.set(section, o, "%s" % opts.__dict__[o])
                 self.opts[o] = opts.__dict__[o]
+        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
 
         if self.opts["verbosity"] >= 5 and loaded_files is not None:
             sys.stderr.write("Successfull load configuration from %s.\n" %
@@ -265,8 +267,8 @@ logdir = None
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
-"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
+metaops = ["mkdir", "creat", "access", "open", "open_close", \
+"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink", "rmdir"]
 
 # I/O operations to be performed
 ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \

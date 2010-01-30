@@ -34,7 +34,7 @@ import HTMLgen as html
 import version 
 import utils
 from common import *
-import oper
+import bench
 import data
 import plot
 
@@ -43,44 +43,6 @@ class Report():
         self.datadir = os.path.abspath(datadir)
         self.db = data.Database("%s/fsbench.db" % self.datadir, False)
         self.plot = plot.Plot()
-    
-    def __del__(self):
-        self.db.close()
-
-    def get_runtime(self):
-        runtime = {}
-        for i, v in self.db.runtime_sel(): runtime[i] = v
-        return runtime
-
-    def meta_stat(self, figdir=None):
-        return self.meta_stat_thread(0, 21570, 0, 0, "mkdir", figdir)
-
-    def meta_stat_thread(self, hostid, pid, tid, testid, oper, figdir=None):
-        """Statistics of performance for a single thread"""
-        res = []
-        oper, data = self.db.meta_sel("oper,data", hostid=hostid, pid=pid,
-            tid=tid, testid=testid, oper=oper)
-        dat = map(lambda (s,e):e-s, self.str2obj(data))
-        nops = len(dat)
-        esum = numpy.sum(dat)
-        eavg = numpy.average(dat)
-        estddev = numpy.std(dat)
-        thput = nops/esum
-        
-        figpath = None
-        if figdir is not None:
-            # plot data
-            # ATTENTION: choose end stamp as x-coordinates
-            xdata, ydata = map(lambda (s,e):e, data), dat
-            figpath = self.plot.points_chart(xdata, ydata,
-                title="%s performance with %s" % (oper, testid),
-                prefix="%s/%s-%s" % (figdir, oper, testid))
-        
-        return nops, esum, eavg, estddev, thput, figpath
-        
-class HTMLReport(Report):
-    def __init__(self, datadir):
-        Report.__init__(self, datadir)
         
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
@@ -94,6 +56,72 @@ class HTMLReport(Report):
         self.ddir = os.path.abspath("%s/data" % self.rdir)
         if not os.path.exists(self.ddir):
             utils.smart_makedirs(self.ddir)
+    
+    def __del__(self):
+        self.db.close()
+
+    def get_runtime(self):
+        runtime = {}
+        for i, v in self.db.runtime_sel():
+            runtime[i] = v
+        return runtime
+
+    def meta_stats(self):
+        stats = []
+        for testid in self.db.meta_get_testids():
+            tests_stat = []
+            for oper in self.db.meta_get_opers(testid=testid):
+                thputlist = []
+                tids = []
+                for tid, data in self.db.meta_get_tid_and_data(
+                    testid=testid, oper=oper):
+                    tids.append(tid)
+                    thputlist.append(len(data)/numpy.sum(map(lambda (s,e):e-s,
+                        data)))
+                thputavg = numpy.average(thputlist)
+                thputmin = numpy.min(thputlist)
+                thputmax = numpy.max(thputlist)
+                thputstddev = numpy.std(thputlist)
+                fig = self.plot.points_chart(
+                    tids, thputlist,
+                    title="Throughput Distribution of %s in Test %s"
+                        % (oper, testid),
+                    xlabel="Process ID", ylabel="Throughput (ops/sec)",
+                    prefix="%s/dist-%s-%s" % (self.fdir, oper, testid))
+                tests_stat.append((oper, thputavg, thputmin, thputmax,
+                    thputstddev, fig))
+            stats.append((testid, tests_stat))
+
+        return stats
+
+    def io_stats(self):
+        stats = []
+        for testid in self.db.io_get_testids():
+            tests_stat = []
+            for oper in self.db.io_get_opers(testid=testid):
+                thputlist = []
+                for data in self.db.io_get_data(testid=testid, oper=oper):
+                    thputlist.append(
+                        10*1048576/numpy.sum(map(lambda (s,e):e-s, data)))
+                thputavg = numpy.average(thputlist)
+                thputmin = numpy.min(thputlist)
+                thputmax = numpy.max(thputlist)
+                thputstddev = numpy.std(thputlist)
+                fig = self.plot.points_chart(
+                    range(0, len(thputlist)), thputlist,
+                    title="Throughput Distribution of %s in Test %s"
+                        % (oper, testid),
+                    xlabel="Process", ylabel="Throughput (msec/sec)",
+                    prefix="%s/dist-%s-%s" % (self.fdir, oper, testid))
+                tests_stat.append((oper, thputavg, thputmin, thputmax,
+                    thputstddev, fig))
+            stats.append((testid, tests_stat))
+        
+        return stats
+
+class HTMLReport(Report):
+    def __init__(self, datadir):
+        Report.__init__(self, datadir)
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()
@@ -105,20 +133,22 @@ class HTMLReport(Report):
             fp = open("%s/report.conf" % self.datadir, "wb")
             fp.write(PARAMARK_DEFAULT_REPORT_CONFIG_STRING)
             fp.close()
-        else: cfg.read("%s/report.conf")
+        else:
+            cfg.read("%s/report.conf")
         
         # Convert configs to options for convenience
         self.opts ={}
         section = "report"
         if cfg.has_section(section):
-            for k, v in cfg.items(section): self.opts[k] = eval(v)
+            for k, v in cfg.items(section):
+                self.opts[k] = eval(v)
         
         self.opts["html"] = {}
         section = "html"
         if cfg.has_section(section):
-            for k, v in cfg.items(section): self.opts[section][k] = eval(v)
+            for k, v in cfg.items(section):
+                self.opts[section][k] = eval(v)
 
-        
         # HTML default settings
         self.FILENAME = "report.html"
         self.TITLE = "ParaMark Filesytem Benchmark Report"
@@ -135,7 +165,7 @@ class HTMLReport(Report):
     def heading(self):
         self.doc.append(html.Heading(self.TITLE_SIZE, self.TITLE))
         
-    def runtime_summary(self):
+    def runtime_section(self):
         runtime = self.get_runtime()
         table = html.Table(tabletitle=None,
             heading=[], border=0, width="100%", cell_padding=2, cell_spacing=0,
@@ -169,33 +199,53 @@ class HTMLReport(Report):
         self.doc.append(html.Heading(self.SECTION_SIZE, "Runtime Summary"))
         self.doc.append(table)
 
-    def metadata(self):
-        table = html.Table(tabletitle=None,
-            heading=["Oper", "Test", "#ops", "Elapsed", 
-                     "", "", "", "Throughput"],
-            heading_align="right",
-            border=0, width="100%", cell_padding=0, cell_spacing=2,
-            column1_align="right", cell_align="right")
-
-        table.body = []
-        table.body.append(map(lambda s:html.Emphasis(s),
-            ["", "", "", 
-             "Total", "Avg.", "StdDev", "Dist.",
-             "#ops/sec"]))
+    def metadata_section(self):
+        self.doc.append(html.Heading(self.SECTION_SIZE, 
+            "Metadata Performance"))
         
-        nops, esum, eavg, estddev, thput, fig = self.meta_stat(self.fdir)
-        figbasename = os.path.basename(fig)
-        image = html.Href("figures/%s" % fig, 
-            html.Image(border=1, align="center",
-            width=20,height=20,
-            filename=figbasename,
-            src="figures/%s" % fig))
-
-        table.body.append(["mkdir", 0, nops, esum, eavg, estddev, image,
-            thput])
-
-        self.doc.append(html.Heading(self.SECTION_SIZE, "Runtime Summary"))
-        self.doc.append(table)
+        stats = self.meta_stats()
+        for testid, tests_stat in stats:
+            self.doc.append(html.Heading(self.SUBSECTION_SIZE, 
+                "Performance of Test %d (#ops/sec)" % testid))
+            table = html.Table(
+                tabletitle="",
+                heading=["Oper", "Avg", "Min", "Max", "StdDev", "Dist"],
+                heading_align="left",
+                border=0, width="100%", cell_padding=0, cell_spacing=2,
+                column1_align="left", cell_align="left")
+            table.body = []
+            for oper, avg, mn, mx, stddev, fig in tests_stat:
+                figbasename = os.path.basename(fig)
+                img = html.Href("figures/%s" % figbasename,
+                    html.Image(border=1, alight="center",
+                    width=20, height=20, filename=figbasename,
+                    src="figures/%s" % figbasename))
+                table.body.append([oper, avg, mn, mx, stddev, img])
+            self.doc.append(table)
+    
+    def io_section(self):
+        self.doc.append(html.Heading(self.SECTION_SIZE, 
+            "I/O Performance"))
+        
+        stats = self.io_stats()
+        for testid, tests_stat in stats:
+            self.doc.append(html.Heading(self.SUBSECTION_SIZE, 
+                "Performance of Test %d" % testid))
+            table = html.Table(
+                tabletitle="",
+                heading=["Oper", "Avg", "Min", "Max", "StdDev", "Dist"],
+                heading_align="left",
+                border=0, width="100%", cell_padding=0, cell_spacing=2,
+                column1_align="left", cell_align="left")
+            table.body = []
+            for oper, avg, mn, mx, stddev, fig in tests_stat:
+                figbasename = os.path.basename(fig)
+                img = html.Href("figures/%s" % figbasename,
+                    html.Image(border=1, alight="center",
+                    width=20, height=20, filename=figbasename,
+                    src="figures/%s" % figbasename))
+                table.body.append([oper, avg, mn, mx, stddev, img])
+            self.doc.append(table)
 
     def footnote(self, start, end):
         text = html.Small()
@@ -216,8 +266,9 @@ class HTMLReport(Report):
         start = (time.localtime(), timer())
         
         self.heading()
-        self.runtime_summary()
-        self.metadata()
+        self.runtime_section()
+        self.metadata_section()
+        self.io_section()
 
         end = (time.localtime(), timer())
 
@@ -226,7 +277,6 @@ class HTMLReport(Report):
         # output
         self.doc.write("%s/%s" % (self.rdir, self.FILENAME))
         sys.stdout.write("Report generated to %s.\n" % self.rdir)
-    
 
 #########################################################################
 # Auxiliary Utilities

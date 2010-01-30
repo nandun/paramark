@@ -198,6 +198,7 @@ def update_opts_kw(dict, restrict, opts, kw):
 # filesystem utility
 def get_mountpoint(path):
     """Get the mountpoint where the path belongs to"""
+    path = os.path.abspath(path)
     mountpoint = None
     fp = open("/etc/mtab", "r")
     for l in fp.readlines():
