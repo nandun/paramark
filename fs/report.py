@@ -27,9 +27,10 @@ import time
 import shutil
 import ConfigParser
 import StringIO
+import xml.dom.minidom
 
 import numpy
-import HTMLgen as html
+#import HTMLgen as html
 
 import version 
 import utils
@@ -119,7 +120,163 @@ class Report():
         
         return stats
 
+class HTMLDocument():
+    def __init__(self):
+        class DOMDocument(xml.dom.minidom.Document):
+            def __init__(self):
+                xml.dom.minidom.Document.__init__(self)
+
+            def writexml(self, writer, indent="", addindent="", newl="",
+                encoding=None):
+                """
+                Override writexml to remove XML declaration "<?xml version="1.0"?>"
+                """
+                for node in self.childNodes:
+                    node.writexml(writer, indent, addindent, newl)
+    
+        self.doc = DOMDocument()
+        self.root = self.doc.createElement("HTML")
+        self.doc.appendChild(self.root)
+
+    def tag(self, name, value=None, attrs=None):
+        name = name.upper()
+        node = self.doc.createElement(name)
+        if value:
+            valueNode = self.doc.createTextNode("%s" % value)
+            node.appendChild(valueNode)
+        if attrs:
+            for k, v in attrs.items():
+                node.setAttribute(k, v)
+        return node
+    
+    def add(self, node):
+        self.root.appendChild(node)
+
+    def table(self, rowdata):
+        tableNode = self.doc.createElement("TABLE")
+
+    # Shortcut functions
+    def H(self, level, value=""):
+        assert level in [1, 2, 3, 4, 5, 6]
+        headingNode = self.doc.createElement("H%d" % level)
+        textNode = self.doc.createTextNode(value)
+        headingNode.appendChild(textNode)
+        return headingNode
+        
+    def head(self, title="", meta=None):
+        head = self.tag("head")
+        head.appendChild(self.tag("title", value=title))
+        return head
+
+    def table(self, rowdata, attrs=None):
+        tableNode = self.tag("table", attrs=attrs)
+        for row in rowdata:
+            rowNode = self.tag("tr")
+            for v in row:
+                rowNode.appendChild(self.tag("td", value=v))
+            tableNode.appendChild(rowNode)
+        return tableNode
+
+    # Persistence
+    def writehtml(self, writer):
+        writer.write("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01??EN\" "
+            "\"http://www.w3.org/TR/html4/strict.dtd\">\n")
+        self.doc.writexml(writer, newl="\n")
+
 class HTMLReport(Report):
+    def __init__(self, datadir):
+        Report.__init__(self, datadir)
+        
+        # Load configurations from default to user specified
+        cfg = ConfigParser.ConfigParser()
+        defaultcfg = StringIO.StringIO(PARAMARK_DEFAULT_REPORT_CONFIG_STRING)
+        cfg.readfp(defaultcfg)
+        defaultcfg.close()
+
+        if not os.path.exists("%s/report.conf" % self.datadir):
+            fp = open("%s/report.conf" % self.datadir, "wb")
+            fp.write(PARAMARK_DEFAULT_REPORT_CONFIG_STRING)
+            fp.close()
+        else:
+            cfg.read("%s/report.conf")
+        
+        # Convert configs to options for convenience
+        self.opts ={}
+        section = "report"
+        if cfg.has_section(section):
+            for k, v in cfg.items(section):
+                self.opts[k] = eval(v)
+        
+        self.opts["html"] = {}
+        section = "html"
+        if cfg.has_section(section):
+            for k, v in cfg.items(section):
+                self.opts[section][k] = eval(v)
+
+        # HTML default settings
+        self.HTML_FILE = "report.html"
+        self.CSS_FILE = "report.css"
+        self.TITLE = "ParaMark Filesytem Benchmarking Report"
+        self.TITLE_SIZE = 1
+        self.SECTION_SIZE = self.TITLE_SIZE + 1
+        self.SUBSECTION_SIZE = self.SECTION_SIZE + 1
+
+        self.doc = HTMLDocument()
+        head = self.doc.head(title=self.TITLE)
+        linkattrs = {}
+        linkattrs["rel"] = "stylesheet"
+        linkattrs["type"] = "text/css"
+        linkattrs["href"] = "%s" % self.CSS_FILE
+        head.appendChild(self.doc.tag("link", attrs=linkattrs))
+        self.doc.add(head)
+
+    def runtime_summary(self):
+        html_contents = []
+        html_contents.append(self.doc.H(self.SECTION_SIZE, "Runtime Summary"))
+
+        runtime = self.get_runtime()
+        rows = []
+        rows.append(["ParaMark", "v%s, %s" % (runtime["version"],
+            runtime["date"])])
+        rows.append(["Platform", "%s" % runtime["platform"]])
+        rows.append(["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
+        rows.append(["Time", "%s --- %s (%.5f seconds)" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["start"])))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["end"])))),
+              (eval(runtime["end"]) - eval(runtime["start"])))])
+        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
+        rows.append(["Command line", "%s" % runtime["cmdline"]])
+        rows.append(["Configuration", "fsbench.conf"])
+        rows.append(["Results Data", "fsbench.db"])
+        html_contents.append(self.doc.table(rows))
+
+        return html_contents
+    
+    def _write_file(self):
+        htmlFile = open("%s/%s" % (self.rdir, self.HTML_FILE), "w")
+        self.doc.writehtml(htmlFile)
+        htmlFile.close()
+        cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
+        cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
+        cssFile.close()
+        sys.stdout.write("Report generated to %s.\n" % self.rdir)
+        
+    def write(self):
+        start = (time.localtime(), timer())
+
+        body = self.doc.tag("body")
+        self.doc.add(body)
+
+        body.appendChild(self.doc.H(self.TITLE_SIZE, value=self.TITLE))
+        for c in self.runtime_summary():
+            body.appendChild(c)
+
+        end = (time.localtime(), timer())
+        self._write_file()
+
+class HTMLReport2(Report):
     def __init__(self, datadir):
         Report.__init__(self, datadir)
         
@@ -316,4 +473,23 @@ format = 'html'
 # plot tools, 'gchar', 'gnuplot', or 'matplotlib'
 plot = 'gnuplot'
 imageformat = 'png'
+"""
+
+# Be careful about browser compatibility!
+# CSS selector:
+#   IE: NODE.class
+#   Firefox: NODE[class=value]
+PARAMARK_DEFAULT_CSS_STYLE_STRING = """\
+TITLE {
+color: #000000;
+display: block;
+}
+
+TITLE[class=main] {
+font-size: 20pt;
+}
+
+TITLE[class=section] {
+font-size: 16pt;
+}
 """
