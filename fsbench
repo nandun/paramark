@@ -73,6 +73,15 @@ class Bench():
 
     def vs(self, msg):
         sys.stderr.write(msg)
+
+    def report(self, path=None):
+        logdir = self.opts["logdir"]
+        if self.opts["report"]:
+            logdir = self.opts["report"]
+        if path:
+            logdir = path
+        self.report = fs.report.HTMLReport(self.opts["logdir"])
+        self.report.write()
          
     def load(self):
         self.opts["hostid"] = 0
@@ -137,19 +146,15 @@ class Bench():
 
 def standalone_main(argv):
     # Get options and configurations
-    if len(argv) > 2 and argv[1] == "report":
-        if len(argv) < 3:
-            sys.stderr.write("usage: %s report DATA_DIR\n" % argv[0])
-            sys.exit(1)
-        myreport = fs.report.HTMLReport(argv[2])
-        myreport.write()
-    else:
-        mybench = Bench(argv)
-        mybench.load()
-        mybench.run()
-        mybench.save()
-        myreport = fs.report.HTMLReport(mybench.opts["logdir"])
-        myreport.produce()
+    mybench = Bench(argv)
+    if mybench.opts["report"]:
+        mybench.report()
+        return 0
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
+    return 0
 
 if __name__ == "__main__":
     sys.exit(standalone_main(sys.argv))

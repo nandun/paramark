@@ -29,7 +29,7 @@ import textwrap
 import ConfigParser
 import StringIO
 
-from oper import FSOP_META, FSOP_IO
+from bench import FSOP_META, FSOP_IO
 
 class Options:
     """Store/Retrieve options from/to configure files or command arguments
@@ -86,7 +86,8 @@ class Options:
                         if self.opts[op].has_key(k):
                             self.opts[op][k] = eval(v)
         
-        if filename: return loaded_files
+        if filename:
+          return loaded_files
         return None
 
     def save_conf(self, filename):
@@ -115,6 +116,10 @@ class Options:
         parser.add_option("-p", "--print-default-conf", action="store_true",
             dest="printdefaultconf", default=False, 
             help="print default configuration file and exit")
+        
+        parser.add_option("-r", "--report", action="store", type="string",
+            dest="report", metavar="PATH", default=None, 
+            help="generate report from log directory")
         
         # override configuration part
         parser.add_option("-w", "--wdir", action="store", type="string",
@@ -154,6 +159,7 @@ class Options:
             self.print_default_conf()
             sys.exit(0)
 
+
         output = StringIO.StringIO(PARAMARK_DEFAULT_CONFIG_STRING)
         loaded_files = self.parse_conf(output,          # load hard string
             [os.path.expanduser("~/.paramark_conf"),    # load home default
@@ -163,6 +169,8 @@ class Options:
 
         # Load from command options
         # section runtime
+        self.opts["report"] = opts.report
+        
         section = "runtime"
         for o in ["wdir", "logdir", "nthreads", 
             "confirm", "verbosity", "dryrun"]: 
