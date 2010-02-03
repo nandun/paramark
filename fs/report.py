@@ -17,34 +17,33 @@
 #############################################################################
 
 #
-# fsreport.py
+# fs/report.py
 # File System Performance Report
 #
 
 import sys
 import os
-import time
 import shutil
+import time
 import ConfigParser
 import StringIO
 import xml.dom.minidom
-import xml.sax.saxutils
 
 import numpy
-#import HTMLgen as html
 
 import version 
-import utils
-from common import *
+import common.utils as utils
+import common.plot as plot
+import common.DHTML as DHTML
 import bench
 import data
-import plot
 
 class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
         self.db = data.Database("%s/fsbench.db" % self.datadir, False)
         self.plot = plot.Plot()
+        self.pyplot = plot.Pyplot()
         
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
@@ -80,10 +79,10 @@ class Report():
                     tids.append(tid)
                     thputlist.append(len(data)/numpy.sum(map(lambda (s,e):e-s,
                         data)))
-                thputavg = numpy.average(thputlist)
-                thputmin = numpy.min(thputlist)
-                thputmax = numpy.max(thputlist)
-                thputstddev = numpy.std(thputlist)
+                thputavg = round(numpy.average(thputlist), 2)
+                thputmin = round(numpy.min(thputlist), 2)
+                thputmax = round(numpy.max(thputlist), 2)
+                thputstddev = round(numpy.std(thputlist), 2)
                 fig = self.plot.points_chart(
                     tids, thputlist,
                     title="Throughput Distribution of %s in Test %s"
@@ -121,91 +120,6 @@ class Report():
         
         return stats
 
-class HTMLDocument():
-    def __init__(self):
-        class DOMDocument(xml.dom.minidom.Document):
-            def __init__(self):
-                xml.dom.minidom.Document.__init__(self)
-
-            def writexml(self, writer, indent="", addindent="", newl="",
-                encoding=None):
-                """
-                Override writexml to remove XML declaration 
-                "<?xml version="1.0"?>"
-                """
-                for node in self.childNodes:
-                    node.writexml(writer, indent, addindent, newl)
-    
-        self.doc = DOMDocument()
-        self.root = self.doc.createElement("HTML")
-        self.doc.appendChild(self.root)
-
-    def tag(self, name, value=None, attrs=None):
-        name = name.upper()
-        node = self.doc.createElement(name)
-        if value:
-            valueNode = self.doc.createTextNode("%s" % value)
-            node.appendChild(valueNode)
-        if attrs:
-            for k, v in attrs.items():
-                node.setAttribute(k, v)
-        return node
-    
-    def add(self, node):
-        self.root.appendChild(node)
-
-    # Shortcut functions
-    def H(self, level, value=""):
-        assert level in [1, 2, 3, 4, 5, 6]
-        headingNode = self.doc.createElement("H%d" % level)
-        headingNode.appendChild(self.doc.createTextNode("%s" % value))
-        return headingNode
-
-    def text(self, txt=""):
-        return self.doc.createTextNode("%s" % txt)
-        
-    def head(self, title="", meta=None):
-        head = self.tag("head")
-        head.appendChild(self.tag("title", value=title))
-        return head
-
-    def href(self, src, dest):
-        aNode = self.doc.createElement("A")
-        aNode.setAttribute("href", dest)
-        if not isinstance(src, xml.dom.Node):
-            src = self.doc.createTextNode("%s" % src)
-        aNode.appendChild(src)
-        return aNode
-
-    def table(self, head, rowdata, attrs=None):
-        tableNode = self.tag("table", attrs=attrs)
-        trNode = self.tag("tr")
-        for row in head + rowdata:
-            if row in head:
-                cellTag = "th"
-            else:
-                cellTag = "td"
-            rowNode = self.tag("tr")
-            for v in row:
-                cellNode = self.tag(cellTag)
-                if not isinstance(v, xml.dom.Node):
-                    v = self.doc.createTextNode("%s" % v)
-                cellNode.appendChild(v)
-                rowNode.appendChild(cellNode)
-            tableNode.appendChild(rowNode)
-        return tableNode
-
-    def img(self, src, attrs={}):
-        attrs["src"] = src
-        imgNode = self.tag("img", attrs=attrs)
-        return imgNode
-
-    # Persistence
-    def writehtml(self, writer, newl=""):
-        writer.write("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" "
-            "\"http://www.w3.org/TR/html4/strict.dtd\">\n")
-        self.doc.writexml(writer, newl=newl)
-
 class HTMLReport(Report):
     def __init__(self, datadir):
         Report.__init__(self, datadir)
@@ -237,23 +151,120 @@ class HTMLReport(Report):
                 self.opts[section][k] = eval(v)
 
         # HTML default settings
-        self.HTML_FILE = "report.html"
-        self.CSS_FILE = "report.css"
+        self.INDEX_FILE = "index.html"
+        self.NAVI_FILE = "navi.html"
+        self.MAIN_FILE = "main.html"
+        self.CSS_FILE = "style.css"
         self.TITLE = "ParaMark Filesytem Benchmarking Report"
         self.TITLE_SIZE = 1
         self.SECTION_SIZE = self.TITLE_SIZE + 1
         self.SUBSECTION_SIZE = self.SECTION_SIZE + 1
-
-        self.doc = HTMLDocument()
-        head = self.doc.head(title=self.TITLE)
-        linkattrs = {"rel":"stylesheet", "type":"text/css", 
+        self.SIDEBAR_SIZE = 10
+        self.LINK_ATTRS = {"rel":"stylesheet", "type":"text/css", 
             "href":"%s" % self.CSS_FILE}
-        head.appendChild(self.doc.tag("link", attrs=linkattrs))
-        self.doc.add(head)
 
-    def runtime_summary(self):
+    def index_page(self):
+        doc = DHTML.HTMLDocument()
+        cols = "%s%%,%s%%" % (self.SIDEBAR_SIZE, 100 - self.SIDEBAR_SIZE)
+        frameset = doc.tag("frameset", attrs={"cols":cols})
+        frameset.appendChild(doc.tag("frame", 
+            attrs={"name":"navi", "src":self.NAVI_FILE}))
+        frameset.appendChild(doc.tag("frame", 
+            attrs={"name":"content", "src":self.MAIN_FILE}))
+        doc.add(frameset)
+        
+        htmlFile = open("%s/%s" % (self.rdir, self.INDEX_FILE), "w")
+        doc.write(htmlFile, newl="\n")
+        htmlFile.close()
+    
+    def main_page(self):
+        doc = DHTML.HTMLDocument()
+        head = doc.makeHead(title=self.TITLE)
+        head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
+        doc.add(head)
+        
+        body = doc.tag("body")
+        doc.add(body)
+
+        body.appendChild(doc.H(self.TITLE_SIZE, value=self.TITLE))
+        body_contents = []
+        body_contents.extend(self.main_runtime_summary(doc))
+        body_contents.extend(self.main_metadata_section(doc))
+        body_contents.extend(self.main_io_section(doc))
+
+        for c in body_contents:
+            body.appendChild(c)
+        
+        self.end = utils.timer2()
+        for c in self.footnote(doc, self.start, self.end):
+            body.appendChild(c)
+        
+        htmlFile = open("%s/%s" % (self.rdir, self.MAIN_FILE), "w")
+        doc.write(htmlFile, newl="\n")
+        htmlFile.close()
+
+    def navi_page(self):
+        doc = DHTML.HTMLDocument()
+        head = doc.tag("head")
+        body = doc.tag("body")
+        doc.add(head)
+
+        # insert script
+        scriptTxt = \
+"""
+function showPage(item) {
+    top.content.location = item.getAttribute('ref')
+}
+"""
+        script = doc.tag("script", value=scriptTxt,
+            attrs={"language":"javascript"})
+        head.appendChild(script)
+        link = doc.tag("link", attrs={"href":self.CSS_FILE, 
+            "rel":"stylesheet", "type":"text/css"})
+        head.appendChild(link)
+        doc.add(body)
+
+        items = [("Overview", 
+            {"onClick":"showPage(this)","ref":self.MAIN_FILE}, [])]
+        
+        subitems = []
+        for op in self.db.meta_get_opers():
+            subitems.append((op, 
+                {"onClick":"showPage(this)",
+                 "ref":self.meta_page(op)}, 
+                 []))
+        items.append(("Metadata", {}, subitems))
+        
+        subitems = []
+        for op in self.db.io_get_opers():
+            subitems.append((op, {}, []))
+        items.append(("Input/Output", {}, []))
+        
+        body.appendChild(doc.makeList(items, attrs={"class":"navi"}))
+        htmlFile = open("%s/%s" % (self.rdir, self.NAVI_FILE), "w")
+        doc.write(htmlFile, newl="\n")
+        htmlFile.close()
+
+    def meta_page(self, opname):
+        doc = DHTML.HTMLDocument()
+        head = doc.makeHead(opname)
+        head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
+        body = doc.tag("body")
+        doc.add(head)
+        
+        body = doc.tag("body")
+        doc.add(body)
+        body.appendChild(doc.H(self.TITLE_SIZE, value="metadata:%s" % opname))
+        
+        htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
+        doc.write(htmlFile, newl="\n")
+        htmlFile.close()
+
+        return "%s.html" % opname
+
+    def main_runtime_summary(self, doc):
         html_contents = []
-        html_contents.append(self.doc.H(self.SECTION_SIZE, "Runtime Summary"))
+        html_contents.append(doc.H(self.SECTION_SIZE, "Runtime Summary"))
 
         runtime = self.get_runtime()
         rows = []
@@ -263,7 +274,7 @@ class HTMLReport(Report):
         rows.append(
             ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
         rows.append(
-            ["Time", "%s --- %s (%.5f seconds)" 
+            ["Time", "%s --- %s (%.2f seconds)" 
             % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
                time.localtime(eval(runtime["start"])))),
               (time.strftime("%a %b %d %Y %H:%M:%S %Z",
@@ -271,80 +282,79 @@ class HTMLReport(Report):
               (eval(runtime["end"]) - eval(runtime["start"])))])
         rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
         rows.append(["Command", "%s" % runtime["cmdline"]])
-        hrefNode = self.doc.href("fsbench.conf", "../fsbench.conf")
+        hrefNode = doc.HREF("fsbench.conf", "../fsbench.conf")
         rows.append(["Configuration", hrefNode])
-        hrefNode = self.doc.href("fsbench.db", "../fsbench.db")
+        hrefNode = doc.HREF("fsbench.db", "../fsbench.db")
         rows.append(["Data", hrefNode])
-        html_contents.append(self.doc.table([], rows))
+        html_contents.append(doc.table([], rows))
 
         return html_contents
 
-    def metadata_section(self):
+    def main_metadata_section(self, doc):
         html_contents = []
-        html_contents.append(self.doc.H(self.SECTION_SIZE, 
+        html_contents.append(doc.H(self.SECTION_SIZE, 
             "Metadata Performance"))
         
+        opers = []
+        avgs = []
+        stds = []
         for testid, tests_stat in self.meta_stats():
             rows = []
             head = [["op", "avg", "min", "max", "stddev", "dist"]]
             for oper, avg, mn, mx, stddev, fig in tests_stat:
+                opers.append(oper)
+                avgs.append(avg)
+                stds.append(stddev)
                 figpath = "figures/%s" % os.path.basename(fig)
-                fighref = self.doc.href(self.doc.img(figpath), figpath)
+                fighref = doc.HREF(
+                    doc.IMG(figpath, attrs={"class":"thumbnail"}), 
+                    figpath)
                 rows.append([oper, avg, mn, mx, stddev, fighref])
-            html_contents.append(self.doc.table(head, rows,
+            html_contents.append(doc.table(head, rows,
                 attrs={"class":"data"}))
+        
+        figpath = "%s/meta_compare.png" % self.fdir
+        self.pyplot.bar(figpath, avgs, yerr=stds, xticks=opers)
+        fig = doc.HREF(doc.IMG(figpath, attrs={"class":"demo"}),
+            figpath)
+        html_contents.append(fig)
+
         return html_contents
     
-    def io_section(self):
+    def main_io_section(self, doc):
         html_contents = []
-        html_contents.append(self.doc.H(self.SECTION_SIZE, "I/O Performance"))
+        html_contents.append(doc.H(self.SECTION_SIZE, "I/O Performance"))
         return html_contents
 
-    def footnote(self, start, end):
+    def footnote(self, doc, start, end):
         html_contents = []
-        pNode = self.doc.tag("p", 
-            value="Generated at %s, took %.5f seconds, using "
+        pNode = doc.tag("p", 
+            value="Generated at %s, took %.2f seconds, using "
             % (time.strftime("%a %b %d %Y %H:%M:%S %Z", end[0]),
               (end[1] - start[1])),
             attrs={"class":"footnote"})
-        pNode.appendChild(self.doc.href("report.conf", "../report.conf"))
-        pNode.appendChild(self.doc.text(" by "))
-        pNode.appendChild(self.doc.href("ParaMark", version.PARAMARK_WEB))
-        pNode.appendChild(self.doc.text(" v%s, %s.\n" 
+        pNode.appendChild(doc.HREF("report.conf", "../report.conf"))
+        pNode.appendChild(doc.TEXT(" by "))
+        pNode.appendChild(doc.HREF("ParaMark", version.PARAMARK_WEB))
+        pNode.appendChild(doc.TEXT(" v%s, %s." 
             % (version.PARAMARK_VERSION, version.PARAMARK_DATE)))
 
         html_contents.append(pNode)
         return html_contents
     
-    def _write_file(self):
-        htmlFile = open("%s/%s" % (self.rdir, self.HTML_FILE), "w")
-        self.doc.writehtml(htmlFile, newl="\n")
-        htmlFile.close()
+    def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
         cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
         cssFile.close()
         sys.stdout.write("Report generated to %s.\n" % self.rdir)
         
     def write(self):
-        start = (time.localtime(), timer())
+        self.start = utils.timer2()
+        self.index_page()
+        self.navi_page()
+        self.css_file()
+        self.main_page()
 
-        body = self.doc.tag("body")
-        self.doc.add(body)
-
-        body.appendChild(self.doc.H(self.TITLE_SIZE, value=self.TITLE))
-        body_contents = []
-        body_contents.extend(self.runtime_summary())
-        body_contents.extend(self.metadata_section())
-        body_contents.extend(self.io_section())
-
-        for c in body_contents:
-            body.appendChild(c)
-        
-        end = (time.localtime(), timer())
-        for c in self.footnote(start, end):
-            body.appendChild(c)
-
-        self._write_file()
 
 ##########################################################################
 # Default configure string
@@ -387,11 +397,22 @@ display: block;
 background-color: #99c68e;
 }
 
-IMG {
+IMG[class=thumbnail] {
 border-style: outset;
 border-width: 1px;
 width: 20px;
 height: 20px;
+}
+
+IMG[class=demo] {
+display: block;
+margin-left: auto;
+margin-right: auto;
+width: 800px;
+height: 600px;
+vertical-align: middle;
+border-style: outset;
+border-width: 0px;
 }
 
 TABLE {
@@ -410,6 +431,12 @@ border-bottom: 2px solid;
 }
 
 TD {
-padding: 6px 8px;
+padding: 2px 2px;
+}
+
+UL[class=navi] {
+font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+font-size: 14px;
+cursor: pointer;
 }
 """

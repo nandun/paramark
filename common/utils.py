@@ -50,6 +50,9 @@ if sys.platform == "win32":
 else:
     timer = time.time
 
+def timer2():
+    return time.localtime(), timer()
+
 def ws(s):
     sys.stdout.write(s)
     sys.stdout.flush()

@@ -29,6 +29,7 @@ import textwrap
 import ConfigParser
 import StringIO
 
+from common.utils import *
 from bench import FSOP_META, FSOP_IO
 
 class Options:
@@ -66,7 +67,7 @@ class Options:
                     self.opts[k] = eval(v)
         
         # Configuration for each operation
-        for op in self.opts["metaops"] + self.opts["ioops"]:
+        for op in FSOP_META + FSOP_IO:
             if self.cfg.has_section(op):
                 self.opts[op] = {}
                 for k, v in self.cfg.items(op):
@@ -159,7 +160,6 @@ class Options:
             self.print_default_conf()
             sys.exit(0)
 
-
         output = StringIO.StringIO(PARAMARK_DEFAULT_CONFIG_STRING)
         loaded_files = self.parse_conf(output,          # load hard string
             [os.path.expanduser("~/.paramark_conf"),    # load home default
@@ -170,6 +170,29 @@ class Options:
         # Load from command options
         # section runtime
         self.opts["report"] = opts.report
+        
+        # Check options here
+        for o in self.opts["metaops"] + self.opts["ioops"]:
+            if o not in FSOP_META + FSOP_IO:
+                errstr = "invalid filesystem operation %s" % o
+        
+        # Rearrange operation sequence based on dependencies
+        _metaops = ["mkdir", "rmdir"]
+        if len(list_intersect([["creat", "access", "open", "open_close",
+            "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"],
+            self.opts["metaopts"]])) > 0:
+            _metaops.insert(-1, "creat")
+        
+        for o in self.opts["metaops"]:
+            if o not in _metaops:
+                _metaops.insert(-1, o)
+        self.opts["metaops"] = _metaops
+
+        _ioops = ["write"]
+        for o in self.opts["ioops"]:
+            if o not in _ioops:
+                _ioops.append(o)
+        self.opts["ioops"] = _ioops
         
         section = "runtime"
         for o in ["wdir", "logdir", "nthreads", 
@@ -183,11 +206,6 @@ class Options:
         if self.opts["verbosity"] >= 5 and loaded_files is not None:
             sys.stderr.write("Successfull load configuration from %s.\n" %
                 ", ".join(loaded_files))
-
-        # Check options here
-        for o in self.opts["metaops"] + self.opts["ioops"]:
-            if o not in FSOP_META + FSOP_IO:
-                errstr = "invalid filesystem operation %s" % o
 
         return self.opts, errstr
 
@@ -275,8 +293,8 @@ logdir = None
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-metaops = ["mkdir", "creat", "access", "open", "open_close", \
-"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink", "rmdir"]
+metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
+"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
 
 # I/O operations to be performed
 ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \

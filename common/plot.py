@@ -22,6 +22,9 @@
 #
 
 import Gnuplot
+import matplotlib
+matplotlib.use("Cairo")
+import matplotlib.pyplot as pyplot
 
 class Plot:
     def __init__(self):
@@ -52,3 +55,26 @@ class Plot:
         self.c("set data style linespoints")
         plotdata = zip(xdata, ydata)
         self.c.plot(plotdata)
+
+    def bars_chart(self, xdata, ydata, filename):
+        self.c.reset()
+        self.c("set terminal %s" % self.terminal)
+        self.c("set output '%s'" % filename)
+        self.c("set data style boxes")
+        plotdata = zip(xdata, ydata)
+        self.c.plot(plotdata)
+
+class Pyplot:
+    def bar(self, path, data, yerr=[], xticks=[], 
+        title="", xlabel="", ylabel=""):
+        pyplot.clf()
+        pyplot.title(title)
+        pyplot.xlabel(xlabel)
+        pyplot.ylabel(ylabel)
+        ind = map(lambda x:x+0.1, range(0, len(data)))
+        xtickind = map(lambda x:x+0.5, range(0, len(data)))
+        pyplot.xticks(xtickind, xticks, rotation="90")
+        pyplot.bar(ind, data, color='y', yerr=yerr)
+        F = pyplot.gcf()
+        F.set_size_inches((15, 10))
+        pyplot.savefig(path)

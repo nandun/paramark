@@ -34,7 +34,7 @@ import copy
 import threading
 
 import version
-import utils
+import common.utils as utils
 import fs.opts
 import fs.bench
 import fs.data

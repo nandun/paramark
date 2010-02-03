@@ -17,7 +17,7 @@ import copy
 import threading
 from __builtin__ import open as _open # for open()
 
-from common import *
+from common.utils import *
 
 OPTYPE_META = 1
 OPTYPE_IO = 0
@@ -102,7 +102,8 @@ class BenchLoad:
         
         # only retrieve metadata part options
         self.opts = {}
-        for o in FSOP_META + FSOP_IO: self.opts[o] = opts[o]
+        for o in FSOP_META + FSOP_IO:
+            self.opts[o] = opts[o]
         
         for k, v in opts["metaopts"].items(): 
             self.__dict__[k] = v
@@ -122,8 +123,8 @@ class BenchLoad:
     
     def produce(self):
         self.rdir = "%s/pmark-wdir-%s-%s-%s-%03d" \
-            % (self.wdir, self.hostid, self.pid, self.tid, \
-               random.randint(0,999))
+            % (self.wdir, self.hostid, self.pid, self.tid, 
+            random.randint(0,999))
         
         queue = [ copy.deepcopy(self.rdir) ]
         i = l = 0
