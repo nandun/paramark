@@ -177,16 +177,18 @@ class Options:
                 errstr = "invalid filesystem operation %s" % o
         
         # Rearrange operation sequence based on dependencies
-        _metaops = ["mkdir", "rmdir"]
-        if len(list_intersect([["creat", "access", "open", "open_close",
-            "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"],
-            self.opts["metaopts"]])) > 0:
-            _metaops.insert(-1, "creat")
-        
-        for o in self.opts["metaops"]:
-            if o not in _metaops:
-                _metaops.insert(-1, o)
-        self.opts["metaops"] = _metaops
+        if len(self.opts["metaops"]) > 0:
+            _metaops = ["mkdir", "rmdir"]
+            if len(list_intersect([["creat", "access", "open", "open_close",
+                "stat_exist", "stat_non", "utime", "chmod", "rename", 
+                "unlink"],
+                self.opts["metaopts"]])) > 0:
+                _metaops.insert(-1, "creat")
+            
+            for o in self.opts["metaops"]:
+                if o not in _metaops:
+                    _metaops.insert(-1, o)
+            self.opts["metaops"] = _metaops
 
         _ioops = ["write"]
         for o in self.opts["ioops"]:

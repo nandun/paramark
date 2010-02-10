@@ -62,15 +62,7 @@ class BenchThread(threading.Thread):
         self.load.produce()
 
         self.opset = []
-        for o in opts["metaops"]: # + opts["ioops"]:
-            ostr = "%s(files=self.load.%s(), " \
-                "verbose=%s, dryrun=%s, **self.opts[\"%s\"])" \
-                % (o, o, self.verbose, self.dryrun, o)
-            op = eval(ostr)
-            self.opset.append(op)
-
-        #for o in ["write", "read"]:
-        for o in []:
+        for o in opts["metaops"] + opts["ioops"]:
             ostr = "%s(files=self.load.%s(), " \
                 "verbose=%s, dryrun=%s, **self.opts[\"%s\"])" \
                 % (o, o, self.verbose, self.dryrun, o)
@@ -489,7 +481,8 @@ class read(IOOp):
 
 class reread(IOOp):
     """Reread a files by os.read() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags=os.O_RDONLY, verbose=False, 
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags=os.O_RDONLY, verbose=False, 
         dryrun=False, **kw):
         IOOp.__init__(self, "reread", files, fsize, blksize, flags, verbose,
         dryrun)
@@ -559,7 +552,8 @@ class write(IOOp):
 
 class rewrite(IOOp):
     """Re-write a files by os.write() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags=os.O_CREAT | os.O_RDWR,
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags=os.O_CREAT | os.O_RDWR,
         mode=stat.S_IRUSR | stat.S_IWUSR, byte='1', fsync=False, 
         verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "rewrite", files, fsize, blksize, flags, verbose,
@@ -600,8 +594,8 @@ class rewrite(IOOp):
 
 class fread(IOOp):
     """Read a files by f.read() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags='r', verbose=False,
-        dryrun=False, **kw):
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags='r', verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "fread", files, fsize, blksize, flags, verbose,
         dryrun)
         self.updatekw(kw)
@@ -630,8 +624,8 @@ class fread(IOOp):
 
 class freread(IOOp):
     """Read a files by f.read() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags='r', verbose=False,
-        dryrun=False, **kw):
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags='r', verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "freread", files, fsize, blksize, flags, verbose,
         dryrun)
         self.updatekw(kw)
@@ -644,7 +638,7 @@ class freread(IOOp):
         
         ret = 1
         s = timer()
-        f = __builtin__.open(self.files, self.flags)
+        f = _open(self.files, self.flags)
         self.res.append((s, timer()))
         while ret:
             s = timer()
@@ -659,8 +653,8 @@ class freread(IOOp):
 
 class fwrite(IOOp):
     """write a files by f.write() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags='w', byte='2', fsync=False,
-        verbose=False, dryrun=False, **kw):
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags='w', byte='2', fsync=False, verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "fwrite", files, fsize, blksize, flags, verbose,
         dryrun)
         self.byte = byte
@@ -676,7 +670,7 @@ class fwrite(IOOp):
         block = self.byte * self.blksize
         writebytes = 0
         s = timer()
-        f = __builtin__.open(self.files, self.flags)
+        f = _open(self.files, self.flags)
         self.res.append((s, timer()))
         while writebytes < self.fsize:
             s = timer()
@@ -696,8 +690,8 @@ class fwrite(IOOp):
 
 class frewrite(IOOp):
     """Re-write a files by f.write() with given parameters"""
-    def __init__(self, files, fsize, blksize, flags='w', byte='3', fsync=False,
-        verbose=False, dryrun=False, **kw):
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags='w', byte='3', fsync=False, verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "frewrite", files, fsize, blksize, flags, verbose,
         dryrun)
         self.byte = byte
@@ -713,7 +707,7 @@ class frewrite(IOOp):
         block = self.byte * self.blksize
         writebytes = 0
         s = timer()
-        f = __builtin__.open(self.files, self.flags)
+        f = _open(self.files, self.flags)
         self.res.append((s, timer()))
         while writebytes < self.fsize:
             s = timer()
@@ -733,7 +727,7 @@ class frewrite(IOOp):
 
 class offsetread(IOOp):
     """Read a files by os.read() with offsets in a certain distribution"""
-    def __init__(self, files, fsize, blksize, flags=os.O_RDONLY, 
+    def __init__(self, files, fsize=1024, blksize=1024, flags=os.O_RDONLY, 
         dist=None, verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "offsetread", files, fsize, blksize, flags, 
             verbose, dryrun)
@@ -786,7 +780,8 @@ class offsetread(IOOp):
 
 class offsetwrite(IOOp):
     """Write a files by os.write() with offsets in a certain distribution"""
-    def __init__(self, files, fsize, blksize, flags=os.O_CREAT | os.O_RDWR, 
+    def __init__(self, files, fsize=1024, blksize=1024, 
+        flags=os.O_CREAT | os.O_RDWR, 
         byte='4', dist=None, fsync=False, verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "offsetwrite", files, fsize, blksize, flags, 
         verbose, dryrun)

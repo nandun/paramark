@@ -78,3 +78,13 @@ class Pyplot:
         F = pyplot.gcf()
         F.set_size_inches((15, 10))
         pyplot.savefig(path)
+    
+    def point(self, path, data, title="", xlabel="", ylabel=""):
+        pyplot.clf()
+        pyplot.title(title)
+        pyplot.xlabel(xlabel)
+        pyplot.ylabel(ylabel)
+        pyplot.scatter(range(0, len(data)), data)
+        F = pyplot.gcf()
+        F.set_size_inches((15, 10))
+        pyplot.savefig(path)

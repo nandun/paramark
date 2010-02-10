@@ -24,6 +24,8 @@
 import sqlite3
 import cPickle
 
+import numpy
+
 from bench import OPTYPE_META, OPTYPE_IO, FSOP_META, FSOP_IO
 
 class Database:
@@ -139,6 +141,11 @@ class Database:
         qstr = qstr % wstr
         self.cur.execute(qstr)
         return map(lambda (v,):str(v), self.cur.fetchall())
+
+    def meta_get_hosts(self):
+        qstr = "SELECT hostid FROM meta GROUP BY hostid"
+        self.cur.execute(qstr)
+        return map(lambda (v,):v, self.cur.fetchall())
     
     def meta_get_data(self, **where):
         qstr = "SELECT data FROM meta %s"
@@ -148,6 +155,19 @@ class Database:
         qstr = qstr % wstr
         self.cur.execute(qstr)
         return map(lambda (v,):self.str2obj(v), self.cur.fetchall())
+
+    def meta_stats_by_host(self, oper, host):
+        qstr = "SELECT data FROM meta WHERE oper='%s' AND hostid='%s'" \
+            % (oper, host)
+        self.cur.execute(qstr)
+        thputlist = []
+        for dat in map(lambda (v,):self.str2obj(v), self.cur.fetchall()):
+            thputlist.append(len(dat)/numpy.sum(map(lambda (s, e):e-s, dat)))
+        thputavg = numpy.average(thputlist)
+        thputmin = numpy.min(thputlist)
+        thputmax = numpy.max(thputlist)
+        thputstd = numpy.std(thputlist)
+        return thputavg, thputmin, thputmax, thputstd, thputlist
     
     def meta_get_tid_and_data(self, **where):
         qstr = "SELECT tid,data FROM meta %s"

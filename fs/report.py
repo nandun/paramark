@@ -67,6 +67,14 @@ class Report():
             runtime[i] = v
         return runtime
 
+    def meta_stats2(self):
+        res = {}
+        for oper in self.db.meta_get_opers():
+            res[oper] = {}
+            for host in self.db.meta_get_hosts():
+                res[oper][host] = self.db.meta_stats_by_host(oper, host)
+        return res
+
     def meta_stats(self):
         stats = []
         for testid in self.db.meta_get_testids():
@@ -177,7 +185,7 @@ class HTMLReport(Report):
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
     
-    def main_page(self):
+    def main_page(self, meta_stats):
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(title=self.TITLE)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
@@ -185,25 +193,74 @@ class HTMLReport(Report):
         
         body = doc.tag("body")
         doc.add(body)
-
-        body.appendChild(doc.H(self.TITLE_SIZE, value=self.TITLE))
-        body_contents = []
-        body_contents.extend(self.main_runtime_summary(doc))
-        body_contents.extend(self.main_metadata_section(doc))
-        body_contents.extend(self.main_io_section(doc))
-
-        for c in body_contents:
-            body.appendChild(c)
         
+        body.appendChild(doc.H(self.TITLE_SIZE, value=self.TITLE))
+        
+        # runtime summary
+        body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
+        runtime = self.get_runtime()
+        rows = []
+        rows.append(
+            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
+        rows.append(["Platform", "%s" % runtime["platform"]])
+        rows.append(
+            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
+        rows.append(
+            ["Time", "%s --- %s (%.2f seconds)" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["start"])))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["end"])))),
+              (eval(runtime["end"]) - eval(runtime["start"])))])
+        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
+        rows.append(["Command", "%s" % runtime["cmdline"]])
+        rows.append(["Configuration",
+            doc.HREF("fsbench.conf", "../fsbench.conf")])
+        rows.append(["Data", 
+            doc.HREF("fsbench.db", "../fsbench.db")])
+        body.appendChild(doc.table([], rows))
+        
+        # metadata summary
+        opers = []
+        avgs = []
+        stds = []
+        for oper, hostdat in meta_stats.items():
+            values = map(lambda x:x[0], hostdat.values())
+            avgs.append(numpy.average(values))
+            stds.append(numpy.std(values))
+            opers.append(oper)
+        if len(opers) > 0:
+            body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
+            figpath = "%s/meta_summary.png" % self.fdir
+            self.pyplot.bar(figpath, avgs, yerr=stds, xticks=opers,
+                title="Overall Metadata Performance",
+                xlabel="Metadata Operations",
+                ylabel="Performance (ops/sec)")
+            body.appendChild(doc.HREF(doc.IMG(figpath, 
+                attrs={"class":"demo"}), figpath))
+
+        # io summary
+        body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
+
+        # footnote
         self.end = utils.timer2()
-        for c in self.footnote(doc, self.start, self.end):
-            body.appendChild(c)
+        pNode = doc.tag("p", 
+            value="Generated at %s, took %.2f seconds, using "
+            % (time.strftime("%a %b %d %Y %H:%M:%S %Z", self.end[0]),
+              (self.end[1] - self.start[1])),
+            attrs={"class":"footnote"})
+        pNode.appendChild(doc.HREF("report.conf", "../report.conf"))
+        pNode.appendChild(doc.TEXT(" by "))
+        pNode.appendChild(doc.HREF("ParaMark", version.PARAMARK_WEB))
+        pNode.appendChild(doc.TEXT(" v%s, %s." 
+            % (version.PARAMARK_VERSION, version.PARAMARK_DATE)))
+        body.appendChild(pNode)
         
         htmlFile = open("%s/%s" % (self.rdir, self.MAIN_FILE), "w")
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
 
-    def navi_page(self):
+    def navi_page(self, metapages):
         doc = DHTML.HTMLDocument()
         head = doc.tag("head")
         body = doc.tag("body")
@@ -228,11 +285,9 @@ function showPage(item) {
             {"onClick":"showPage(this)","ref":self.MAIN_FILE}, [])]
         
         subitems = []
-        for op in self.db.meta_get_opers():
-            subitems.append((op, 
-                {"onClick":"showPage(this)",
-                 "ref":self.meta_page(op)}, 
-                 []))
+        for op, page in metapages:
+            subitems.append((op, {"onClick":"showPage(this)",
+                 "ref":page}, []))
         items.append(("Metadata", {}, subitems))
         
         subitems = []
@@ -245,7 +300,14 @@ function showPage(item) {
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
 
-    def meta_page(self, opname):
+    def meta_pages(self):
+        metapages = []
+        metastats = self.meta_stats2()
+        for oper, hostdat in metastats.items():
+            metapages.append((oper, self.meta_oper_page(oper, hostdat)))
+        return metapages, metastats
+
+    def meta_oper_page(self, opname, hostdat):
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(opname)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
@@ -255,92 +317,37 @@ function showPage(item) {
         body = doc.tag("body")
         doc.add(body)
         body.appendChild(doc.H(self.TITLE_SIZE, value="metadata:%s" % opname))
+
+        body.appendChild(doc.H(self.SECTION_SIZE, "Performance among hosts"))
         
+        tHead = [["host", "avg", "min", "max", "std", "dist"]]
+        tRows = []
+        avgList = []
+        stdList = []
+        hostList = []
+        for host, dat in hostdat.items():
+            thputavg, thputmin, thputmax, thputstd, thputlist = dat            
+            figpath = "%s/%s_host%s.png" % (self.fdir, opname, host)
+            self.pyplot.point(figpath, thputlist)
+            figref = doc.HREF(doc.IMG(figpath, attrs={"class":"thumbnail"}), 
+                    figpath)
+            tRows.append([host, thputavg, thputmin, thputmax, thputstd, 
+                figref])
+            avgList.append(thputavg)
+            stdList.append(thputstd)
+            hostList.append(host)
+
+        figpath = "%s/%s_host_cmp.png" % (self.fdir, opname)
+        self.pyplot.bar(figpath, avgList, yerr=stdList, xticks=hostList)
+        body.appendChild(doc.HREF(doc.IMG(figpath, attrs={"class":"demo"}),
+            figpath))
+        body.appendChild(doc.table(tHead, tRows, attrs={"class":"data"}))
+
         htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
 
         return "%s.html" % opname
-
-    def main_runtime_summary(self, doc):
-        html_contents = []
-        html_contents.append(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-
-        runtime = self.get_runtime()
-        rows = []
-        rows.append(
-            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
-        rows.append(["Platform", "%s" % runtime["platform"]])
-        rows.append(
-            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
-        rows.append(
-            ["Time", "%s --- %s (%.2f seconds)" 
-            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["start"])))),
-              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"])))])
-        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
-        rows.append(["Command", "%s" % runtime["cmdline"]])
-        hrefNode = doc.HREF("fsbench.conf", "../fsbench.conf")
-        rows.append(["Configuration", hrefNode])
-        hrefNode = doc.HREF("fsbench.db", "../fsbench.db")
-        rows.append(["Data", hrefNode])
-        html_contents.append(doc.table([], rows))
-
-        return html_contents
-
-    def main_metadata_section(self, doc):
-        html_contents = []
-        html_contents.append(doc.H(self.SECTION_SIZE, 
-            "Metadata Performance"))
-        
-        opers = []
-        avgs = []
-        stds = []
-        for testid, tests_stat in self.meta_stats():
-            rows = []
-            head = [["op", "avg", "min", "max", "stddev", "dist"]]
-            for oper, avg, mn, mx, stddev, fig in tests_stat:
-                opers.append(oper)
-                avgs.append(avg)
-                stds.append(stddev)
-                figpath = "figures/%s" % os.path.basename(fig)
-                fighref = doc.HREF(
-                    doc.IMG(figpath, attrs={"class":"thumbnail"}), 
-                    figpath)
-                rows.append([oper, avg, mn, mx, stddev, fighref])
-            html_contents.append(doc.table(head, rows,
-                attrs={"class":"data"}))
-        
-        figpath = "%s/meta_compare.png" % self.fdir
-        self.pyplot.bar(figpath, avgs, yerr=stds, xticks=opers)
-        fig = doc.HREF(doc.IMG(figpath, attrs={"class":"demo"}),
-            figpath)
-        html_contents.append(fig)
-
-        return html_contents
-    
-    def main_io_section(self, doc):
-        html_contents = []
-        html_contents.append(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        return html_contents
-
-    def footnote(self, doc, start, end):
-        html_contents = []
-        pNode = doc.tag("p", 
-            value="Generated at %s, took %.2f seconds, using "
-            % (time.strftime("%a %b %d %Y %H:%M:%S %Z", end[0]),
-              (end[1] - start[1])),
-            attrs={"class":"footnote"})
-        pNode.appendChild(doc.HREF("report.conf", "../report.conf"))
-        pNode.appendChild(doc.TEXT(" by "))
-        pNode.appendChild(doc.HREF("ParaMark", version.PARAMARK_WEB))
-        pNode.appendChild(doc.TEXT(" v%s, %s." 
-            % (version.PARAMARK_VERSION, version.PARAMARK_DATE)))
-
-        html_contents.append(pNode)
-        return html_contents
     
     def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
@@ -350,10 +357,12 @@ function showPage(item) {
         
     def write(self):
         self.start = utils.timer2()
+
+        meta_pages, meta_stats = self.meta_pages()
         self.index_page()
-        self.navi_page()
+        self.navi_page(meta_pages)
         self.css_file()
-        self.main_page()
+        self.main_page(meta_stats)
 
 
 ##########################################################################
