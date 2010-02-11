@@ -67,15 +67,19 @@ class Report():
             runtime[i] = v
         return runtime
 
-    def meta_stats2(self):
+    def meta_stats(self):
         res = {}
         for oper in self.db.meta_get_opers():
             res[oper] = {}
             for host in self.db.meta_get_hosts():
                 res[oper][host] = self.db.meta_stats_by_host(oper, host)
         return res
+    
+    def io_stats(self):
+        res = {}
+        return res
 
-    def meta_stats(self):
+    def meta_stats_deprecated(self):
         stats = []
         for testid in self.db.meta_get_testids():
             tests_stat = []
@@ -103,7 +107,7 @@ class Report():
 
         return stats
 
-    def io_stats(self):
+    def io_stats_deprecated(self):
         stats = []
         for testid in self.db.io_get_testids():
             tests_stat = []
@@ -185,7 +189,7 @@ class HTMLReport(Report):
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
     
-    def main_page(self, meta_stats):
+    def main_page(self, meta_stats, io_stats):
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(title=self.TITLE)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
@@ -232,15 +236,21 @@ class HTMLReport(Report):
         if len(opers) > 0:
             body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
             figpath = "%s/meta_summary.png" % self.fdir
+            figlink = "figures/meta_summary.png"
             self.pyplot.bar(figpath, avgs, yerr=stds, xticks=opers,
                 title="Overall Metadata Performance",
                 xlabel="Metadata Operations",
                 ylabel="Performance (ops/sec)")
-            body.appendChild(doc.HREF(doc.IMG(figpath, 
-                attrs={"class":"demo"}), figpath))
+            body.appendChild(doc.HREF(doc.IMG(figlink, 
+                attrs={"class":"demo"}), figlink))
 
         # io summary
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
+        oper = []
+        avgs = []
+        stds = []
+        for oper, hostdat in io_stats.items():
+            print oper, hostdat
 
         # footnote
         self.end = utils.timer2()
@@ -302,10 +312,11 @@ function showPage(item) {
 
     def meta_pages(self):
         metapages = []
-        metastats = self.meta_stats2()
+        metastats = self.meta_stats()
         for oper, hostdat in metastats.items():
             metapages.append((oper, self.meta_oper_page(oper, hostdat)))
         return metapages, metastats
+
 
     def meta_oper_page(self, opname, hostdat):
         doc = DHTML.HTMLDocument()
@@ -328,9 +339,10 @@ function showPage(item) {
         for host, dat in hostdat.items():
             thputavg, thputmin, thputmax, thputstd, thputlist = dat            
             figpath = "%s/%s_host%s.png" % (self.fdir, opname, host)
+            figlink = "figures/%s_host%s.png" % (opname, host) 
             self.pyplot.point(figpath, thputlist)
-            figref = doc.HREF(doc.IMG(figpath, attrs={"class":"thumbnail"}), 
-                    figpath)
+            figref = doc.HREF(doc.IMG(figlink, attrs={"class":"thumbnail"}), 
+                    figlink)
             tRows.append([host, thputavg, thputmin, thputmax, thputstd, 
                 figref])
             avgList.append(thputavg)
@@ -338,9 +350,10 @@ function showPage(item) {
             hostList.append(host)
 
         figpath = "%s/%s_host_cmp.png" % (self.fdir, opname)
+        figlink = "figures/%s_host_cmp.png" % opname
         self.pyplot.bar(figpath, avgList, yerr=stdList, xticks=hostList)
-        body.appendChild(doc.HREF(doc.IMG(figpath, attrs={"class":"demo"}),
-            figpath))
+        body.appendChild(doc.HREF(doc.IMG(figlink, attrs={"class":"demo"}),
+            figlink))
         body.appendChild(doc.table(tHead, tRows, attrs={"class":"data"}))
 
         htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
@@ -348,6 +361,13 @@ function showPage(item) {
         htmlFile.close()
 
         return "%s.html" % opname
+
+    def io_pages(self):
+        iopages = []
+        iostats = self.io_stats()
+        for oper, hostdat in iostats.items():
+            iopages.append((oper, self.io_oper_page(oper, hostdat)))
+        return iopages, iostats
     
     def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
@@ -359,10 +379,11 @@ function showPage(item) {
         self.start = utils.timer2()
 
         meta_pages, meta_stats = self.meta_pages()
+        io_pages, io_stats = self.io_pages()
         self.index_page()
         self.navi_page(meta_pages)
         self.css_file()
-        self.main_page(meta_stats)
+        self.main_page(meta_stats, io_stats)
 
 
 ##########################################################################
