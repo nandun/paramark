@@ -120,7 +120,7 @@ class Bench():
         if self.opts["dryrun"]:
             return
         
-        # Intial log directory and database
+        # Initial log directory and database
         self.opts["logdir"] = utils.smart_makedirs(self.opts["logdir"],
             self.opts["confirm"])
         logdir = os.path.abspath(self.opts["logdir"])
