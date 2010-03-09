@@ -21,48 +21,9 @@
 # Data plotting
 #
 
-import Gnuplot
 import matplotlib
 matplotlib.use("Cairo")
 import matplotlib.pyplot as pyplot
-
-class Plot:
-    def __init__(self):
-        self.c = Gnuplot.Gnuplot()
-        self.terminal = "png"
-    
-    def points_chart(self, xdata, ydata, prefix="points_chart",
-        title="points_chart", xlabel="x label", ylabel="y label"):
-        filepath = "%s.%s" % (prefix, self.terminal)
-        self.c.reset()
-        self.c.title(title)
-        self.c.xlabel(xlabel)
-        self.c.ylabel(ylabel)
-        self.c("set terminal %s" % self.terminal)
-        self.c("set output '%s'" % filepath)
-        self.c("set data style points")
-        plotdata = zip(xdata, ydata)
-        self.c.plot(plotdata)
-
-        return filepath
-
-    def line_chart(self, xdata, ydata, filename="line_chart.png",
-        title="line_chart"):
-        assert len(xdata) == len(ydata)
-        self.c.reset()
-        self.c("set terminal %s" % self.terminal)
-        self.c("set output '%s'" % filename)
-        self.c("set data style linespoints")
-        plotdata = zip(xdata, ydata)
-        self.c.plot(plotdata)
-
-    def bars_chart(self, xdata, ydata, filename):
-        self.c.reset()
-        self.c("set terminal %s" % self.terminal)
-        self.c("set output '%s'" % filename)
-        self.c("set data style boxes")
-        plotdata = zip(xdata, ydata)
-        self.c.plot(plotdata)
 
 class Pyplot:
     def bar(self, path, data, yerr=[], xticks=[], 
