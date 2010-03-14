@@ -472,7 +472,7 @@ class read(IOOp):
             s = timer()
             ret = os.read(fd, self.blksize)
             self.res.append((s, timer()))
-            #assert len(ret) == blksize
+            assert len(ret) == self.blksize
         s = timer()
         os.close(fd)
         self.res.append((s, timer()))
@@ -537,6 +537,7 @@ class write(IOOp):
         while writebytes < self.fsize:
             s = timer()
             ret = os.write(fd, block)
+            print "append write"
             self.res.append((s, timer()))
             assert ret == self.blksize
             writebytes += ret
@@ -547,7 +548,7 @@ class write(IOOp):
         s = timer()
         os.close(fd)
         self.res.append((s, timer()))
-
+        
         return self.res
 
 class rewrite(IOOp):

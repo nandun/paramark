@@ -42,7 +42,6 @@ class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
         self.db = data.Database("%s/fsbench.db" % self.datadir, False)
-        self.plot = plot.Plot()
         self.pyplot = plot.Pyplot()
         
         # report root dir
@@ -77,60 +76,11 @@ class Report():
     
     def io_stats(self):
         res = {}
+        for oper in self.db.io_get_opers():
+            res[oper] = {}
+            for host in self.db.io_get_hosts():
+                res[oper][host] = self.db.io_stats_by_host(oper, host)
         return res
-
-    def meta_stats_deprecated(self):
-        stats = []
-        for testid in self.db.meta_get_testids():
-            tests_stat = []
-            for oper in self.db.meta_get_opers(testid=testid):
-                thputlist = []
-                tids = []
-                for tid, data in self.db.meta_get_tid_and_data(
-                    testid=testid, oper=oper):
-                    tids.append(tid)
-                    thputlist.append(len(data)/numpy.sum(map(lambda (s,e):e-s,
-                        data)))
-                thputavg = round(numpy.average(thputlist), 2)
-                thputmin = round(numpy.min(thputlist), 2)
-                thputmax = round(numpy.max(thputlist), 2)
-                thputstddev = round(numpy.std(thputlist), 2)
-                fig = self.plot.points_chart(
-                    tids, thputlist,
-                    title="Throughput Distribution of %s in Test %s"
-                        % (oper, testid),
-                    xlabel="Process ID", ylabel="Throughput (ops/sec)",
-                    prefix="%s/dist-%s-%s" % (self.fdir, oper, testid))
-                tests_stat.append((oper, thputavg, thputmin, thputmax,
-                    thputstddev, fig))
-            stats.append((testid, tests_stat))
-
-        return stats
-
-    def io_stats_deprecated(self):
-        stats = []
-        for testid in self.db.io_get_testids():
-            tests_stat = []
-            for oper in self.db.io_get_opers(testid=testid):
-                thputlist = []
-                for data in self.db.io_get_data(testid=testid, oper=oper):
-                    thputlist.append(
-                        10*1048576/numpy.sum(map(lambda (s,e):e-s, data)))
-                thputavg = numpy.average(thputlist)
-                thputmin = numpy.min(thputlist)
-                thputmax = numpy.max(thputlist)
-                thputstddev = numpy.std(thputlist)
-                fig = self.plot.points_chart(
-                    range(0, len(thputlist)), thputlist,
-                    title="Throughput Distribution of %s in Test %s"
-                        % (oper, testid),
-                    xlabel="Process", ylabel="Throughput (msec/sec)",
-                    prefix="%s/dist-%s-%s" % (self.fdir, oper, testid))
-                tests_stat.append((oper, thputavg, thputmin, thputmax,
-                    thputstddev, fig))
-            stats.append((testid, tests_stat))
-        
-        return stats
 
 class HTMLReport(Report):
     def __init__(self, datadir):
@@ -171,7 +121,7 @@ class HTMLReport(Report):
         self.TITLE_SIZE = 1
         self.SECTION_SIZE = self.TITLE_SIZE + 1
         self.SUBSECTION_SIZE = self.SECTION_SIZE + 1
-        self.SIDEBAR_SIZE = 10
+        self.SIDEBAR_SIZE = 20
         self.LINK_ATTRS = {"rel":"stylesheet", "type":"text/css", 
             "href":"%s" % self.CSS_FILE}
 
@@ -316,7 +266,6 @@ function showPage(item) {
         for oper, hostdat in metastats.items():
             metapages.append((oper, self.meta_oper_page(oper, hostdat)))
         return metapages, metastats
-
 
     def meta_oper_page(self, opname, hostdat):
         doc = DHTML.HTMLDocument()

@@ -3,6 +3,6 @@
 # Prepare libraries for ParaMark usage
 # Debian/Ubuntu
 
-PKGS="python python-scipy python-numpy python-gnuplot gnuplot"
+PKGS="python python-scipy python-numpy python-matplotlib"
 
 sudo apt-get install $PKGS
