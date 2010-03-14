@@ -76,6 +76,10 @@ class Report():
     
     def io_stats(self):
         res = {}
+        for oper in self.db.io_get_opers():
+            res[oper] = {}
+            for host in self.db.io_get_hosts():
+                res[oper][host] = self.db.io_stats_by_host(oper, host)
         return res
 
 class HTMLReport(Report):
@@ -117,7 +121,7 @@ class HTMLReport(Report):
         self.TITLE_SIZE = 1
         self.SECTION_SIZE = self.TITLE_SIZE + 1
         self.SUBSECTION_SIZE = self.SECTION_SIZE + 1
-        self.SIDEBAR_SIZE = 10
+        self.SIDEBAR_SIZE = 20
         self.LINK_ATTRS = {"rel":"stylesheet", "type":"text/css", 
             "href":"%s" % self.CSS_FILE}
 
@@ -262,7 +266,6 @@ function showPage(item) {
         for oper, hostdat in metastats.items():
             metapages.append((oper, self.meta_oper_page(oper, hostdat)))
         return metapages, metastats
-
 
     def meta_oper_page(self, opname, hostdat):
         doc = DHTML.HTMLDocument()

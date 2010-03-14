@@ -192,6 +192,20 @@ class Database:
         self.cur.execute(qstr)
         return map(lambda (v,):str(v), self.cur.fetchall())
     
+    def io_get_hosts(self):
+        qstr = "SELECT hostid FROM io GROUP BY hostid"
+        self.cur.execute(qstr)
+        return map(lambda (v,):v, self.cur.fetchall())
+    
+    def io_stats_by_host(self, oper, host):
+        qstr = "SELECT data FROM io WHERE oper='%s' AND hostid='%s'" \
+            % (oper, host)
+        self.cur.execute(qstr)
+        thputlist = []
+        for dat in map(lambda (v,):self.str2obj(v), self.cur.fetchall()):
+            print oper, host, dat
+        return None
+    
     def io_get_data(self, **where):
         qstr = "SELECT data FROM io %s"
         wstr = " AND ".join(map(lambda k:"%s='%s'" % (k, where[k]), 
