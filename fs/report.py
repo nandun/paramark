@@ -199,8 +199,8 @@ class HTMLReport(Report):
         oper = []
         avgs = []
         stds = []
-        for oper, hostdat in io_stats.items():
-            print oper, hostdat
+        #for oper, hostdat in io_stats.items():
+        #    print oper, hostdat
 
         # footnote
         self.end = utils.timer2()
@@ -220,7 +220,7 @@ class HTMLReport(Report):
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
 
-    def navi_page(self, metapages):
+    def navi_page(self, metapages, iopages):
         doc = DHTML.HTMLDocument()
         head = doc.tag("head")
         body = doc.tag("body")
@@ -246,14 +246,13 @@ function showPage(item) {
         
         subitems = []
         for op, page in metapages:
-            subitems.append((op, {"onClick":"showPage(this)",
-                 "ref":page}, []))
+            subitems.append((op, {"onClick":"showPage(this)", "ref":page}, []))
         items.append(("Metadata", {}, subitems))
         
         subitems = []
-        for op in self.db.io_get_opers():
-            subitems.append((op, {}, []))
-        items.append(("Input/Output", {}, []))
+        for op, page in iopages:
+            subitems.append((op, {"onClick":"showPage(this)", "ref":page}, []))
+        items.append(("Input/Output", {}, subitems))
         
         body.appendChild(doc.makeList(items, attrs={"class":"navi"}))
         htmlFile = open("%s/%s" % (self.rdir, self.NAVI_FILE), "w")
@@ -271,7 +270,6 @@ function showPage(item) {
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(opname)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
-        body = doc.tag("body")
         doc.add(head)
         
         body = doc.tag("body")
@@ -311,6 +309,36 @@ function showPage(item) {
 
         return "%s.html" % opname
 
+    def io_oper_page(self, opname, hostdat):
+        """Generate statistic page for I/O operation
+        IN:
+        OUT:
+        """
+        doc = DHTML.HTMLDocument()
+        head = doc.makeHead(opname)
+        head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
+        doc.add(head)
+        
+        body = doc.tag("body")
+        doc.add(body)
+        body.appendChild(doc.H(self.TITLE_SIZE, value="io:%s" % opname))
+        body.appendChild(doc.H(self.SECTION_SIZE, "Comparison among hosts"))
+
+        tHead = [["host", "avg", "min", "max", "std", "dist"]]
+        tRows = []
+        avgList = []
+        stdList = []
+        hostList = []
+        for host, dat in hostdat.items():
+            thputavg, thputmin, thputmax, thputstd, thputlist = dat            
+            print host, dat
+        
+        htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
+        doc.write(htmlFile, newl="\n")
+        htmlFile.close()
+
+        return "%s.html" % opname
+
     def io_pages(self):
         iopages = []
         iostats = self.io_stats()
@@ -330,10 +358,9 @@ function showPage(item) {
         meta_pages, meta_stats = self.meta_pages()
         io_pages, io_stats = self.io_pages()
         self.index_page()
-        self.navi_page(meta_pages)
+        self.navi_page(meta_pages, io_pages)
         self.css_file()
         self.main_page(meta_stats, io_stats)
-
 
 ##########################################################################
 # Default configure string
@@ -342,7 +369,7 @@ function showPage(item) {
 
 PARAMARK_DEFAULT_REPORT_CONFIG_STRING = """\
 # ParaMark default performance report configuration
-# 2009/12/22
+# 2010/03/15
 
 [report]
 # report format: html

@@ -106,10 +106,6 @@ class Options:
         parser = optparse.OptionParser(usage=usage,
                     formatter=OptionParserHelpFormatter())
         
-        #parser.remove_option("-h")
-        #parser.add_option("-h", "--help", action="store_true",
-        #    dest="help", default=False, help="show the help message and exit")
-        
         parser.add_option("-c", "--conf", action="store", type="string",
             dest="conf", metavar="PATH", default="",
             help="configuration file")
@@ -256,25 +252,26 @@ class OptionParserHelpFormatter(optparse.IndentedHelpFormatter):
 ##########################################################################
 
 PARAMARK_DEFAULT_CONFIG_STRING = """\
-# ParaMark default benchmarking configuration
-# 2010/01/28
+# ParaMark Default Benchmarking Configuration
+# last updated: 2010/03/15
 
 ##########################################################################
 # Howto:
-#   * Only modify the values you would like to change
-#   * Lines beginning with '#' or ';' are ignored
+#   * Only modify the values you would like to change.
+#   * Lines beginning with '#' or ';' are ignored.
 #   * Every value should be an evaluable string by Python.
 #     For example, a path value should be embraced by quotation marks, 
-#     e.g. '/full/path' or "/full/path"
-#     Following the convention in this file will be safe.
+#     i.e., '/full/path' or "/full/path"
+#   * Following the conventions of this file will be safe.
 ##########################################################################
 
 ##########################################################################
 # Global Runtime Options
 ##########################################################################
+
 [runtime]
 # Benchmark working directory
-# Don't forget the quotation marks: " "
+# Don't forget quotation marks: " "
 wdir = "./"
 
 # Number of concurrent benchmarking thread
@@ -305,19 +302,20 @@ ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \
 ##########################################################################
 # Globale options to override local ones
 ##########################################################################
+
 [metaopts]
-# overwrite following local settings
+# Overwrite following local settings
 overwrite=True
 
-# list variables to override
+# List variables to override
 opcnt = 10
 factor = 16
 
 [ioopts]
-# overwrite following local settings
+# Overwrite following local settings
 overwrite=True
 
-# list variables to override
+# List variables to override
 # K=1024, M=1048576, G=1073741824, T=1099511627776
 fsize = 10 * 1048576
 bsize = 4 * 1024

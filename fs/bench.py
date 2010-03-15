@@ -50,13 +50,14 @@ class BenchThread(threading.Thread):
         
         self.opts = opts
         self.sync = sync
+        self.synctime = []
         self.hostid = opts["hostid"]
         self.pid = opts["pid"]
         self.tid = opts["tid"]
-        self.testid = opts["testid"]
         self.verbose = opts["verbose"]
         self.dryrun = opts["dryrun"]
         self.ioopts = opts["ioopts"]
+        self.name = "Thread h%s:p%s:t%s" % (self.hostid, self.pid, self.tid)
 
         self.load = BenchLoad(opts)
         self.load.produce()
@@ -76,13 +77,16 @@ class BenchThread(threading.Thread):
         
         for op in self.opset:
             op.execute()
-            self.barrier()
+            self.barrier(op.name)
         
         if not self.dryrun:
             shutil.rmtree(self.load.root_dir())
 
-    def barrier(self):
+    def barrier(self, name=""):
         self.sync.barrier()
+        self.synctime.append((name, timer()))
+        #if len(self.synctime) > 1:
+        #    print name, self.synctime[-1][1] - self.synctime[-2][1]
         
 __all__.append("BenchThread")
 
@@ -182,6 +186,7 @@ class MetaOp(Op):
         self.type = OPTYPE_META
         self.name = name
         self.files = files
+        self.opcnt = len(files)
         self.verbose = verbose
         self.dryrun = dryrun
     
@@ -197,13 +202,16 @@ class mkdir(MetaOp):
 
     def execute(self):
         for f in self.files:
-            if self.verbose: self.vs("os.mkdir(%s)" % f)
-            if self.dryrun: continue
+            if self.verbose:
+                self.vs("mkdir: os.mkdir(%s)" % f)
+            if self.dryrun:
+                continue
             s = timer()
             os.mkdir(f)
             self.res.append((s, timer()))
         
-        if not self.dryrun: assert len(self.res) == len(self.files)
+        if not self.dryrun:
+            assert len(self.res) == len(self.files)
         return self.res
         
 class rmdir(MetaOp):
@@ -457,7 +465,7 @@ class read(IOOp):
     
     def execute(self):
         if self.verbose:
-            self.vs("os.read(%s, %d) * %d" 
+            self.vs("read: os.read(%s, %d) * %d" 
                 % (self.files, self.blksize, self.fsize/self.blksize))
         if self.dryrun:
             return None
@@ -468,11 +476,17 @@ class read(IOOp):
         s = timer()
         fd = os.open(self.files, self.flags)
         self.res.append((s, timer()))
-        while ret:
+        
+        while True:
             s = timer()
             ret = os.read(fd, self.blksize)
-            self.res.append((s, timer()))
-            assert len(ret) == self.blksize
+            e = timer()
+            if len(ret) == 0:
+                break
+            else:
+                assert len(ret) == self.blksize
+                self.res.append((s, e))
+        
         s = timer()
         os.close(fd)
         self.res.append((s, timer()))
@@ -482,8 +496,7 @@ class read(IOOp):
 class reread(IOOp):
     """Reread a files by os.read() with given parameters"""
     def __init__(self, files, fsize=1024, blksize=1024, 
-        flags=os.O_RDONLY, verbose=False, 
-        dryrun=False, **kw):
+        flags=os.O_RDONLY, verbose=False, dryrun=False, **kw):
         IOOp.__init__(self, "reread", files, fsize, blksize, flags, verbose,
         dryrun)
         self.updatekw(kw)
@@ -524,7 +537,7 @@ class write(IOOp):
        
     def execute(self):
         if self.verbose:
-            self.vs("os.write(%s, %d) * %d" 
+            self.vs("write: os.write(%s, %d) * %d" 
                 % (self.files, self.blksize, self.fsize/self.blksize))
         if self.dryrun:
             return None
@@ -537,7 +550,6 @@ class write(IOOp):
         while writebytes < self.fsize:
             s = timer()
             ret = os.write(fd, block)
-            print "append write"
             self.res.append((s, timer()))
             assert ret == self.blksize
             writebytes += ret
