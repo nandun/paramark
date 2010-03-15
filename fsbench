@@ -134,7 +134,10 @@ class Bench():
         # Save results
         self.db = fs.data.Database("%s/fsbench.db" % logdir, True)
         self.db.runtime_ins(self.runtime)
-        self.db.data_ins(self.threads, self.start)
+        self.db.ins_rawdata(self.threads, self.start)
+        self.db._aggregate_0(True)
+        self.db.aggregate_io_by_host(True)
+        self.db.aggregate_io_by_all(True)
         self.db.close()
 
         if self.opts["verbosity"] >= 1:
@@ -153,7 +156,7 @@ def standalone_main(argv):
     mybench.load()
     mybench.run()
     mybench.save()
-    mybench.report()
+    #mybench.report()
     return 0
 
 if __name__ == "__main__":
