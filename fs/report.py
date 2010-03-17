@@ -38,6 +38,8 @@ import common.DHTML as DHTML
 import bench
 import data
 
+from bench import OPTYPE_META, OPTYPE_IO, FSOP_META, FSOP_IO
+
 class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
@@ -59,12 +61,6 @@ class Report():
     
     def __del__(self):
         self.db.close()
-
-    def get_runtime(self):
-        runtime = {}
-        for i, v in self.db.runtime_sel():
-            runtime[i] = v
-        return runtime
 
     def meta_stats(self):
         res = {}
@@ -139,7 +135,7 @@ class HTMLReport(Report):
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
     
-    def main_page(self, meta_stats, io_stats):
+    def main_page(self):
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(title=self.TITLE)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
@@ -152,7 +148,9 @@ class HTMLReport(Report):
         
         # runtime summary
         body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-        runtime = self.get_runtime()
+        runtime = {}
+        for k, v in self.db.get_runtimes():
+            runtime[k] = v
         rows = []
         rows.append(
             ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
@@ -173,34 +171,51 @@ class HTMLReport(Report):
         rows.append(["Data", 
             doc.HREF("fsbench.db", "../fsbench.db")])
         body.appendChild(doc.table([], rows))
-        
+
         # metadata summary
-        opers = []
-        avgs = []
-        stds = []
-        for oper, hostdat in meta_stats.items():
-            values = map(lambda x:x[0], hostdat.values())
-            avgs.append(numpy.average(values))
-            stds.append(numpy.std(values))
-            opers.append(oper)
-        if len(opers) > 0:
+        meta_opers = []
+        meta_aggs = []
+        meta_stds = []
+        io_opers = []
+        io_aggs = []
+        io_stds = []
+        for tid,op,optype,thmin,thmax,thavg,thagg,thstd \
+            in self.db.get_stat_all():
+            if optype == OPTYPE_META:
+                meta_opers.append(op)
+                meta_aggs.append(thagg)
+                meta_stds.append(thstd)
+            elif optype == OPTYPE_IO:
+                io_opers.append(op)
+                io_aggs.append(thagg)
+                io_stds.append(thstd)
+            
+        if len(meta_aggs) > 0:
             body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
             figpath = "%s/meta_summary.png" % self.fdir
             figlink = "figures/meta_summary.png"
-            self.pyplot.bar(figpath, avgs, yerr=stds, xticks=opers,
+            self.pyplot.bar(figpath, meta_aggs, yerr=meta_stds, 
+                xticks=meta_opers,
                 title="Overall Metadata Performance",
                 xlabel="Metadata Operations",
                 ylabel="Performance (ops/sec)")
             body.appendChild(doc.HREF(doc.IMG(figlink, 
-                attrs={"class":"demo"}), figlink))
-
-        # io summary
-        body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        oper = []
-        avgs = []
-        stds = []
-        #for oper, hostdat in io_stats.items():
-        #    print oper, hostdat
+               attrs={"class":"demo"}), figlink))
+        
+        if len(io_aggs) > 0:
+            body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
+            figpath = "%s/io_summary.png" % self.fdir
+            figlink = "figures/io_summary.png"
+            # TODO: Setup unit from options
+            io_aggs = map(lambda x:x/1048576, io_aggs)
+            io_stds = map(lambda x:x/1048576, io_stds)
+            self.pyplot.bar(figpath, io_aggs, yerr=io_stds, 
+                xticks=io_opers,
+                title="Overall I/O Performance",
+                xlabel="I/O Operations",
+                ylabel="Performance (MB/sec)")
+            body.appendChild(doc.HREF(doc.IMG(figlink, 
+               attrs={"class":"demo"}), figlink))
 
         # footnote
         self.end = utils.timer2()
@@ -259,14 +274,7 @@ function showPage(item) {
         doc.write(htmlFile, newl="\n")
         htmlFile.close()
 
-    def meta_pages(self):
-        metapages = []
-        metastats = self.meta_stats()
-        for oper, hostdat in metastats.items():
-            metapages.append((oper, self.meta_oper_page(oper, hostdat)))
-        return metapages, metastats
-
-    def meta_oper_page(self, opname, hostdat):
+    def oper_page(self, opname):
         doc = DHTML.HTMLDocument()
         head = doc.makeHead(opname)
         head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
@@ -274,31 +282,36 @@ function showPage(item) {
         
         body = doc.tag("body")
         doc.add(body)
-        body.appendChild(doc.H(self.TITLE_SIZE, value="metadata:%s" % opname))
 
-        body.appendChild(doc.H(self.SECTION_SIZE, "Performance among hosts"))
+        body.appendChild(doc.H(self.TITLE_SIZE, value="%s" % opname))
+        body.appendChild(doc.H(self.SECTION_SIZE, "Comparison among hosts"))
         
-        tHead = [["host", "avg", "min", "max", "std", "dist"]]
+        tHead = [["host", "agg", "avg", "min", "max", "std", "dist"]]
         tRows = []
         avgList = []
+        aggList = []
         stdList = []
         hostList = []
-        for host, dat in hostdat.items():
-            thputavg, thputmin, thputmax, thputstd, thputlist = dat            
-            figpath = "%s/%s_host%s.png" % (self.fdir, opname, host)
-            figlink = "figures/%s_host%s.png" % (opname, host) 
-            self.pyplot.point(figpath, thputlist)
+        for hid,tid,thmin,thmax,thavg,thagg,thstd in self.db.get_stats('data1',
+            ['hostid','tid','min','max','avg','agg','std'], {'oper':opname}):
+            figpath = "%s/%s_host%s.png" % (self.fdir, opname, hid)
+            figlink = "figures/%s_host%s.png" % (opname, hid)
+            thlist = self.db.get_stats('data0', ['agg'], 
+                {'hostid':hid, 'oper':opname})
+            thlist = map(lambda x:x/1048576, thlist)
+            self.pyplot.point(figpath, thlist)
             figref = doc.HREF(doc.IMG(figlink, attrs={"class":"thumbnail"}), 
                     figlink)
-            tRows.append([host, thputavg, thputmin, thputmax, thputstd, 
-                figref])
-            avgList.append(thputavg)
-            stdList.append(thputstd)
-            hostList.append(host)
+            tRows.append([hid, thagg/1048576, thavg/1048576, thmin/1048576, 
+                thmax/1048576, thstd/1048576, figref])
+            avgList.append(thavg/1048576)
+            aggList.append(thagg/1048576)
+            stdList.append(thstd/1048576)
+            hostList.append(hid)
 
         figpath = "%s/%s_host_cmp.png" % (self.fdir, opname)
         figlink = "figures/%s_host_cmp.png" % opname
-        self.pyplot.bar(figpath, avgList, yerr=stdList, xticks=hostList)
+        self.pyplot.bar(figpath, aggList, yerr=stdList, xticks=hostList)
         body.appendChild(doc.HREF(doc.IMG(figlink, attrs={"class":"demo"}),
             figlink))
         body.appendChild(doc.table(tHead, tRows, attrs={"class":"data"}))
@@ -309,43 +322,6 @@ function showPage(item) {
 
         return "%s.html" % opname
 
-    def io_oper_page(self, opname, hostdat):
-        """Generate statistic page for I/O operation
-        IN:
-        OUT:
-        """
-        doc = DHTML.HTMLDocument()
-        head = doc.makeHead(opname)
-        head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
-        doc.add(head)
-        
-        body = doc.tag("body")
-        doc.add(body)
-        body.appendChild(doc.H(self.TITLE_SIZE, value="io:%s" % opname))
-        body.appendChild(doc.H(self.SECTION_SIZE, "Comparison among hosts"))
-
-        tHead = [["host", "avg", "min", "max", "std", "dist"]]
-        tRows = []
-        avgList = []
-        stdList = []
-        hostList = []
-        for host, dat in hostdat.items():
-            thputavg, thputmin, thputmax, thputstd, thputlist = dat            
-            print host, dat
-        
-        htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
-        doc.write(htmlFile, newl="\n")
-        htmlFile.close()
-
-        return "%s.html" % opname
-
-    def io_pages(self):
-        iopages = []
-        iostats = self.io_stats()
-        for oper, hostdat in iostats.items():
-            iopages.append((oper, self.io_oper_page(oper, hostdat)))
-        return iopages, iostats
-    
     def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
         cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
@@ -354,13 +330,22 @@ function showPage(item) {
         
     def write(self):
         self.start = utils.timer2()
+        
+        self.db.agg_thread(True)
+        self.db.agg_host(True)
+        self.db.agg_all(True)
 
-        meta_pages, meta_stats = self.meta_pages()
-        io_pages, io_stats = self.io_pages()
+        metapages = []
+        iopages = []
+        for oper in self.db.get_opers():
+            if oper in FSOP_META:
+                metapages.append((oper, self.oper_page(oper)))
+            elif oper in FSOP_IO:
+                iopages.append((oper, self.oper_page(oper)))
         self.index_page()
-        self.navi_page(meta_pages, io_pages)
+        self.navi_page(metapages, iopages)
         self.css_file()
-        self.main_page(meta_stats, io_stats)
+        self.main_page()
 
 ##########################################################################
 # Default configure string
