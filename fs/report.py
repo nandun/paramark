@@ -292,21 +292,29 @@ function showPage(item) {
         aggList = []
         stdList = []
         hostList = []
-        for hid,tid,thmin,thmax,thavg,thagg,thstd in self.db.get_stats('data1',
-            ['hostid','tid','min','max','avg','agg','std'], {'oper':opname}):
+        for hid,tid,optype,thmin,thmax,thavg,thagg,thstd \
+            in self.db.get_stats('data1',
+            ['hostid','tid','optype','min','max','avg','agg','std'], 
+            {'oper':opname}):
+            
             figpath = "%s/%s_host%s.png" % (self.fdir, opname, hid)
             figlink = "figures/%s_host%s.png" % (opname, hid)
             thlist = self.db.get_stats('data0', ['agg'], 
                 {'hostid':hid, 'oper':opname})
-            thlist = map(lambda x:x/1048576, thlist)
+            if optype == OPTYPE_IO:
+                thlist = map(lambda x:x/1048576, thlist)
+                thagg = thagg / 1048576
+                thavg = thavg / 1048576
+                thmin = thmin / 1048576
+                thmax = thmax / 1048576
+                thstd = thstd / 1048576
             self.pyplot.point(figpath, thlist)
             figref = doc.HREF(doc.IMG(figlink, attrs={"class":"thumbnail"}), 
                     figlink)
-            tRows.append([hid, thagg/1048576, thavg/1048576, thmin/1048576, 
-                thmax/1048576, thstd/1048576, figref])
-            avgList.append(thavg/1048576)
-            aggList.append(thagg/1048576)
-            stdList.append(thstd/1048576)
+            tRows.append([hid, thagg, thavg, thmin, thmax, thstd, figref])
+            avgList.append(thavg)
+            aggList.append(thagg)
+            stdList.append(thstd)
             hostList.append(hid)
 
         figpath = "%s/%s_host_cmp.png" % (self.fdir, opname)
