@@ -5,7 +5,7 @@
 #############################################################################
 
 # fs/bench.py
-# Single-thread file system benchmark
+# File system benchmark
 
 import os
 import sys
@@ -23,6 +23,111 @@ OPTYPE_META = 1
 OPTYPE_IO = 0
 
 __all__ = ["OPTYPE_META", "OPTYPE_IO"]
+
+class Bench():
+    """General file system benchmark"""
+    def __init__(self, opts=None, **kw):
+        self.config = opts
+        if opts is None:
+            self.config = fs.opts.Options()
+
+        self.opts, errstr = self.config.load(argv)
+        if errstr:
+            sys.stderr("error: %s\n" % errstr)
+            sys.exit(1)
+
+        # Benchmark runtime environment
+        self.runtime = {}
+        self.runtime["version"] = version.PARAMARK_VERSION
+        self.runtime["date"] = version.PARAMARK_DATE
+        self.runtime["uid"] = os.getuid()
+        self.runtime["pid"] = os.getpid()
+        self.runtime["user"] = pwd.getpwuid(os.getuid())[0]
+        self.runtime["hostname"] = socket.gethostname()
+        self.runtime["platform"] = " ".join(os.uname())
+        self.runtime["cmdline"] = " ".join(sys.argv)
+        self.runtime["environ"] = copy.deepcopy(os.environ)
+        self.runtime["mountpoint"] = utils.get_mountpoint(self.opts["wdir"])
+        self.runtime["wdir"] = self.opts["wdir"]
+        
+        # Post check and preparation
+        if self.opts["logdir"] is None:  # generate random logdir in cwd
+            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
+                (self.runtime["user"], time.strftime("%j-%H-%M-%S")))
+        
+        # runtime passing variables
+        self.threads = []  # run set
+
+    def vs(self, msg):
+        sys.stderr.write(msg)
+
+    def report(self, path=None):
+        logdir = self.opts["logdir"]
+        if self.opts["report"]:
+            logdir = self.opts["report"]
+        if path:
+            logdir = path
+        self.report = fs.report.HTMLReport(self.opts["logdir"])
+        self.report.write()
+         
+    def load(self):
+        self.opts["hostid"] = 0
+        self.opts["pid"] = os.getpid()
+        self.opts["testid"] = 0
+        self.opts["verbose"] = False
+        if self.opts["verbosity"] >= 3:
+            self.opts["verbose"] = True
+        
+        self.thread_sync = fs.bench.ThreadSync(self.opts["nthreads"])
+        for i in range(0, self.opts["nthreads"]):
+            self.opts["tid"] = i
+            self.threads.append(fs.bench.BenchThread(self.opts,
+                self.thread_sync))
+
+    def run(self):
+        self.start = utils.timer()
+        
+        # shuffle threads to avoid scheduling effect
+        #random.shuffle(self.threads)
+        for t in self.threads:
+            t.start()
+
+        for t in self.threads:
+            t.join()
+        
+        if self.opts["dryrun"]:
+            sys.stdout.write("Dryrun, nothing executed.\n")
+        
+        self.end = utils.timer()
+        
+        self.runtime["start"] = "%r" % self.start
+        self.runtime["end"] = "%r" % self.end
+
+    def save(self):
+        if self.opts["dryrun"]:
+            return
+        
+        # Initial log directory and database
+        self.opts["logdir"] = utils.smart_makedirs(self.opts["logdir"],
+            self.opts["confirm"])
+        logdir = os.path.abspath(self.opts["logdir"])
+        
+        # Save used configuration file
+        self.config.save_conf("%s/fsbench.conf" % logdir)
+        if self.opts["verbosity"] >= 1:
+            self.vs("applied configurations saved to %s/fsbench.conf\n" 
+                % logdir)
+        
+        # Save results
+        self.db = fs.data.Database("%s/fsbench.db" % logdir, True)
+        self.db.ins_runtime(self.runtime)
+        self.db.ins_conf('%s/fsbench.conf' % logdir)
+        self.db.ins_rawdata(self.threads, self.start)
+        self.db.close()
+
+        if self.opts["verbosity"] >= 1:
+            self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
+
 
 class ThreadSync():
     """Thread synchornization"""

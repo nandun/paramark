@@ -1,88 +1,84 @@
 #############################################################################
-# ParaMark:  A Parallel/Distributed File Systems Benchmark
+# ParaMark: A Benchmark for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Distributed under GNU General Public Licence version 3
 #############################################################################
 
 #
-# fsopts.py
+# fs/opts.py
 # Options and Configurations Parsers
 #
 
 import sys
 import os
 import stat
-import optparse
-import textwrap
-import ConfigParser
-import StringIO
 
+from modules.opts import Options as CommonOptions
 from common.utils import *
 from bench import FSOP_META, FSOP_IO
 
-class Options:
-    """Store/Retrieve options from/to configure files or command arguments
+class Options(CommonOptions):
     """
-    def __init__(self):
-        self.cfg = ConfigParser.ConfigParser()
+    Store/Retrieve options from/to configure files or command arguments
+    """
+    def __init__(self, argv=None):
+        CommonOptions.__init__(self, argv)
+        self.DEFAULT_CONFIG_STRING = FS_BENCHMARK_DEFAULT_CONFIG_STRING
+    
+    def _add_default_options(self):
+        CommonOptions._add_default_options(self)
         
-        # options container to pass to benchmark
-        self.opts = {}
+        self.optParser.add_option("-c", "--conf", action="store", 
+            type="string", dest="conf", metavar="PATH", default="",
+            help="configuration file")
+        
+        self.optParser.add_option("-r", "--report", action="store", 
+            type="string", dest="report", metavar="PATH", default=None, 
+            help="generate report from log directory")
+        
+        self.optParser.add_option("-w", "--wdir", action="store", 
+            type="string", dest="wdir", metavar="PATH", default="./",
+            help="working directory (default: cwd)")
+        
+        self.optParser.add_option("-l", "--logdir", action="store", 
+            type="string", dest="logdir", metavar="PATH", default=None,
+            help="log directory (default: auto)")
+        
+        self.optParser.add_option("-t", "--threads", action="store", 
+            type="int", dest="nthreads", metavar="NUM", default=1,
+            help="number of current threads (default: 1)")
+        
+        self.optParser.add_option("-f", "--force", action="store_false",
+            dest="confirm", default=True,
+            help="Force to go, do not confirm (default: disabled)")
 
-    #
-    # Parse/Store options from/to configure file
-    #
-    def print_default_conf(self, filename=None):
+    def _parse_conf(self, fp, filename=[]):
+        if fp:
+            self.cfgParser.readfp(fp)
         if filename:
-            try:
-                f = open(filename, "wb")
-            except IOError:
-                sys.stderr.write("failed to open file %s" % filename)
-                sys.exit(1)
-            f.write(PARAMARK_DEFAULT_CONFIG_STRING)
-            f.close()
-        else:
-            sys.stdout.write(PARAMARK_DEFAULT_CONFIG_STRING)
-        
-    def parse_conf(self, fp, filename=[]):
-        if fp: self.cfg.readfp(fp)
-        if filename: loaded_files = self.cfg.read(filename)
+            loaded_files = self.cfgParser.read(filename)
 
         # MUST keep consistent with configure file format
         for section in ["runtime"]:
-            if self.cfg.has_section(section):
-                for k, v in self.cfg.items(section):
-                    self.opts[k] = eval(v)
+            if self.cfgParser.has_section(section):
+                for k, v in self.cfgParser.items(section):
+                    self.set_val(k, eval(v))
         
         # Configuration for each operation
         for op in FSOP_META + FSOP_IO:
-            if self.cfg.has_section(op):
-                self.opts[op] = {}
-                for k, v in self.cfg.items(op):
-                    self.opts[op][k] = eval(v)
+            if self.cfgParser.has_section(op):
+                self.set_subval(op, map(lambda (k,v):(k,eval(v)),
+                    self.cfgParser.items(op)))
 
         # Override local options
         for sec in ["meta", "io"]:
             section = sec + "opts"
-            self.opts[section] = {}
-            for k, v in self.cfg.items(section):
-                self.opts[section][k] = eval(v)
-            if self.cfg.has_section(section) and \
-               self.cfg.has_option(section, "overwrite") and \
-               self.cfg.getboolean(section, "overwrite"):
-                for k, v in self.cfg.items(sec + "opts"):
+            self.set_subval(section,
+                map(lambda (k,v):(k,eval(v)), self.cfgParser.items(section)))
+            if self.cfgParser.has_section(section) and \
+               self.cfgParser.has_option(section, "overwrite") and \
+               self.cfgParser.getboolean(section, "overwrite"):
+                for k, v in self.cfgParser.items(sec + "opts"):
                     for op in self.opts[sec + "ops"]:
                         if self.opts[op].has_key(k):
                             self.opts[op][k] = eval(v)
@@ -92,76 +88,16 @@ class Options:
         return None
 
     def save_conf(self, filename):
-        """Save current configuration to file"""
+        """
+        Save current configuration to file
+        """
         fp = open(filename, "wb")
         self.cfg.write(fp)
         fp.close()
         
-    #
-    # Parse/Store options from/to command line
-    #
-    def parse_argv(self, argv):
-        usage = "paramark command [options]"
-
-        parser = optparse.OptionParser(usage=usage,
-                    formatter=OptionParserHelpFormatter())
-        
-        parser.add_option("-c", "--conf", action="store", type="string",
-            dest="conf", metavar="PATH", default="",
-            help="configuration file")
-        
-        parser.add_option("-p", "--print-default-conf", action="store_true",
-            dest="printdefaultconf", default=False, 
-            help="print default configuration file and exit")
-        
-        parser.add_option("-r", "--report", action="store", type="string",
-            dest="report", metavar="PATH", default=None, 
-            help="generate report from log directory")
-        
-        # override configuration part
-        parser.add_option("-w", "--wdir", action="store", type="string",
-            dest="wdir", metavar="PATH", default="./",
-            help="working directory (default: cwd)")
-        
-        parser.add_option("-l", "--logdir", action="store", type="string",
-            dest="logdir", metavar="PATH", default=None,
-            help="log directory (default: auto)")
-        
-        parser.add_option("-t", "--threads", action="store", type="int",
-            dest="nthreads", metavar="NUM", default=1,
-            help="number of current threads (default: 1)")
-        
-        parser.add_option("-f", "--force", action="store_false",
-            dest="confirm", default=True,
-            help="Force to go, do not confirm (default: disabled)")
-        
-        parser.add_option("-v", "--verbosity", action="store", type="int",
-            dest="verbosity", metavar="NUM", default=None,
-            help="verbosity level: 0/1/2/3/4/5 (default: 0)")
-        
-        parser.add_option("-d", "--dryrun", action="store_true",
-            dest="dryrun", default=None, 
-            help="dry run, do not execute (default: disabled)")
-
-        opts, args = parser.parse_args(argv)
-
-        return opts, None
-
-    def load(self, argv):
+    def _load(self):
         errstr = None
 
-        # Parse command options first, and handling some common options
-        opts, _ = self.parse_argv(argv)
-        if opts.printdefaultconf:
-            self.print_default_conf()
-            sys.exit(0)
-
-        output = StringIO.StringIO(PARAMARK_DEFAULT_CONFIG_STRING)
-        loaded_files = self.parse_conf(output,          # load hard string
-            [os.path.expanduser("~/.paramark_conf"),    # load home default
-             os.path.abspath(".paramark_conf"),         # load cwd default
-             os.path.abspath(opts.conf)])               # load user-specified
-        output.close()
 
         # Load from command options
         # section runtime
@@ -207,53 +143,14 @@ class Options:
 
         return self.opts, errstr
 
-# OptionParser help string workaround
-# adapted from Tim Chase's code from following thread
-# http://groups.google.com/group/comp.lang.python/msg/09f28e26af0699b1
-class OptionParserHelpFormatter(optparse.IndentedHelpFormatter):
-    def format_description(self, desc):
-        if not desc: return ""
-        desc_width = self.width - self.current_indent
-        indent = " " * self.current_indent
-        bits = desc.split('\n')
-        formatted_bits = [
-            textwrap.fill(bit, desc_width, initial_indent=indent,
-                susequent_indent=indent)
-            for bit in bits]
-        result = "\n".join(formatted_bits) + "\n"
-        return result
-
-    def format_option(self, opt):
-        result = []
-        opts = self.option_strings[opt]
-        opt_width = self.help_position - self.current_indent - 2
-        if len(opts) > opt_width:
-            opts = "%*s%s\n" % (self.current_indent, "", opts)
-            indent_first = self.help_position
-        else:
-            opts = "%*s%-*s  " % (self.current_indent, "", opt_width, opts)
-            indent_first = 0
-        result.append(opts)
-        if opt.help:
-            help_text = self.expand_default(opt)
-            help_lines = []
-            for para in help_text.split("\n"):
-                help_lines.extend(textwrap.wrap(para, self.help_width))
-            result.append("%*s%s\n" % (indent_first, "", help_lines[0]))
-            result.extend(["%*s%s\n" % (self.help_position, "", line)
-                for line in help_lines[1:]])
-        elif opts[-1] != "\n":
-            result.append("\n")
-        return "".join(result)
-
 ##########################################################################
 # Default configure string
 # Hard-coded for installation convenience
 ##########################################################################
 
-PARAMARK_DEFAULT_CONFIG_STRING = """\
+FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark Default Benchmarking Configuration
-# last updated: 2010/03/15
+# last updated: 2010/03/26
 
 ##########################################################################
 # Howto:
@@ -266,10 +163,9 @@ PARAMARK_DEFAULT_CONFIG_STRING = """\
 ##########################################################################
 
 ##########################################################################
-# Global Runtime Options
+# Global Options
 ##########################################################################
-
-[runtime]
+[global]
 # Benchmark working directory
 # Don't forget quotation marks: " "
 wdir = "./"
@@ -299,23 +195,13 @@ metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
 ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \
 "fwrite", "frewrite", "offsetread", "offsetwrite"]
 
-##########################################################################
-# Globale options to override local ones
-##########################################################################
-
-[metaopts]
 # Overwrite following local settings
-overwrite=True
+override=True
 
-# List variables to override
+# Variables to override
 opcnt = 10
 factor = 16
 
-[ioopts]
-# Overwrite following local settings
-overwrite=True
-
-# List variables to override
 # K=1024, M=1048576, G=1073741824, T=1099511627776
 fsize = 10 * 1048576
 bsize = 4 * 1024
