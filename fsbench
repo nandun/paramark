@@ -23,16 +23,15 @@ import fs.bench
 def standalone_main(fsopt):
     fsopt.set_usage("[gxpc mw] fsbench [options]")
     fsopt.load()
-    return 0
     
     mybench = fs.bench.Bench(fsopt)
-    if mybench.opts["report"]:
+    if fsopt.opts.report:
         mybench.report()
         return 0
     mybench.load()
     mybench.run()
     mybench.save()
-    mybench.report()
+    #mybench.report()
     return 0
 
 # GXP entry

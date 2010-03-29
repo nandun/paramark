@@ -28,16 +28,15 @@ class Options(CommonOptions):
     def _add_default_options(self):
         CommonOptions._add_default_options(self)
         
-        self.optParser.add_option("-c", "--conf", action="store", 
-            type="string", dest="conf", metavar="PATH", default="",
-            help="configuration file")
-        
+        # Should keep default value None here, since we need to test
+        # whether an option has been set by command
+        # instead, default values are set from DEFAULT_CONFIG_STRING
         self.optParser.add_option("-r", "--report", action="store", 
             type="string", dest="report", metavar="PATH", default=None, 
             help="generate report from log directory")
         
         self.optParser.add_option("-w", "--wdir", action="store", 
-            type="string", dest="wdir", metavar="PATH", default="./",
+            type="string", dest="wdir", metavar="PATH", default=None,
             help="working directory (default: cwd)")
         
         self.optParser.add_option("-l", "--logdir", action="store", 
@@ -45,7 +44,7 @@ class Options(CommonOptions):
             help="log directory (default: auto)")
         
         self.optParser.add_option("-t", "--threads", action="store", 
-            type="int", dest="nthreads", metavar="NUM", default=1,
+            type="int", dest="nthreads", metavar="NUM", default=None,
             help="number of current threads (default: 1)")
         
         self.optParser.add_option("-f", "--force", action="store_false",
@@ -87,17 +86,8 @@ class Options(CommonOptions):
           return loaded_files
         return None
 
-    def save_conf(self, filename):
-        """
-        Save current configuration to file
-        """
-        fp = open(filename, "wb")
-        self.cfg.write(fp)
-        fp.close()
-        
     def _load(self):
         errstr = None
-
 
         # Load from command options
         # section runtime
@@ -188,11 +178,11 @@ logdir = None
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-metaops = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
+meta = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
 "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
 
 # I/O operations to be performed
-ioops = ["read", "reread", "write", "rewrite", "fread", "freread", \
+io = ["read", "reread", "write", "rewrite", "fread", "freread", \
 "fwrite", "frewrite", "offsetread", "offsetwrite"]
 
 # Overwrite following local settings
