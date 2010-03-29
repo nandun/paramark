@@ -50,7 +50,30 @@ class Options(CommonOptions):
         self.optParser.add_option("-f", "--force", action="store_false",
             dest="confirm", default=True,
             help="Force to go, do not confirm (default: disabled)")
-
+    
+    def load(self):
+        CommonOptions.load(self)
+        
+        # Rearrange operation sequence based on dependencies
+        if len(self.opts.meta) > 0:
+            _meta = ["mkdir", "rmdir"]
+            if len(list_intersect([["creat", "access", "open", "open_close",
+                "stat_exist", "stat_non", "utime", "chmod", "rename", 
+                "unlink"], self.opts.meta])) > 0:
+                _meta.insert(-1, "creat")
+            
+            for o in self.opts.meta:
+                if o not in _meta:
+                    _metaops.insert(-1, o)
+            self.opts.meta = _meta
+        
+        if len(self.opts.io) > 0:
+            _io = ["write"]
+            for o in self.opts.io:
+                if o not in _io:
+                    _ioops.append(o)
+            self.opts.io = _io
+        
     def _parse_conf(self, fp, filename=[]):
         if fp:
             self.cfgParser.readfp(fp)

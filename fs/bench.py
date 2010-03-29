@@ -166,16 +166,16 @@ class BenchThread(threading.Thread):
         self._load()
 
     def _load(self):
-        # Generate load
         self.load.rdir = os.path.abspath("%s/pmark-wdir-%s-%s-%s-%03d" \
             % (self.cfg.wdir, self.cfg.hid, self.cfg.pid, self.cfg.tid, 
             random.randint(0,999)))
 
+        # Generate load
         self._meta_load()
         self._io_load()
 
         # Configure operations
-        for o in self.cfg.metaops + self.cfg.ioops:
+        for o in self.cfg.meta + self.cfg.io:
             ostr = "%s(files=self.load.%s, " \
                 "verbose=%s, dryrun=%s, **self.cfg.%s.get_kws())" \
                 % (o, o, self.cfg.verbose, self.cfg.dryrun, o)
@@ -221,8 +221,8 @@ class BenchThread(threading.Thread):
             op.execute()
             self.barrier(op.name)
         
-        if not self.dryrun:
-            shutil.rmtree(self.load.root_dir())
+        if not self.cfg.dryrun:
+            shutil.rmtree(self.load.rdir)
 
     def barrier(self, name=""):
         self.sync.barrier()
@@ -242,7 +242,8 @@ class Op:
     def updatekw(self, kw):
         if kw is not None:
             for k, v in kw.items():
-                if self.__dict__.has_key(k): self.__dict__[k] = v
+                if self.__dict__.has_key(k):
+                    self.__dict__[k] = v
 
     def vs(self, msg):
         sys.stderr.write("%s\n" % msg)
@@ -275,9 +276,8 @@ class mkdir(MetaOp):
     def execute(self):
         for f in self.files:
             if self.verbose:
-                self.vs("mkdir: os.mkdir(%s)" % f)
-            if self.dryrun:
-                continue
+                self.vs("os.mkdir(%s)" % f)
+            if self.dryrun: continue
             s = timer()
             os.mkdir(f)
             self.res.append((s, timer()))
@@ -310,10 +310,7 @@ class creat(MetaOp):
         MetaOp.__init__(self, "creat", files, verbose, dryrun)
         self.flags = flags
         self.mode = mode
-        print kw
-        print "pre", self.flags, self.mode
         self.updatekw(kw)
-        print "after", self.flags, self.mode
     
     def execute(self):
         for f in self.files:
@@ -322,7 +319,6 @@ class creat(MetaOp):
                     % (f, self.flags, self.mode))
             if self.dryrun: continue
             s = timer()
-            print f, self.flags, self.mode
             os.close(os.open(f, self.flags, self.mode))
             self.res.append((s, timer()))
 
