@@ -1,23 +1,11 @@
 #############################################################################
-# ParaMark: A Parallel/Distributed File Systems Benchmark
+# ParaMark: A Benchmark for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#############################################################################
+# Distributed under GNU General Public Licence version 3
+#n############################################################################
 
 #
-# common.py
+# modules/utils.py
 # Common Constants, Routines and Utilities
 #
 
@@ -199,14 +187,19 @@ def update_opts_kw(dict, restrict, opts, kw):
             if dict.has_key(key) and kw.has_key(key): dict[key] = kw[key]
 
 # filesystem utility
-def get_mountpoint(path):
-    """Get the mountpoint where the path belongs to"""
-    path = os.path.abspath(path)
-    mountpoint = None
-    fp = open("/etc/mtab", "r")
-    for l in fp.readlines():
-        if path.startswith(l.strip().split(" ")[1]):
-            # TODO: startswith "/"
-            mountpoint = l.strip()
-    fp.close()
+def get_fs_info(path):
+    """
+    Get the mountpoint where the path belongs to
+    """
+    if sys.platform == "linux":
+        path = os.path.abspath(path)
+        mountpoint = None
+        fp = open("/etc/mtab", "r")
+        for l in fp.readlines():
+            if path.startswith(l.strip().split(" ")[1]):
+                # TODO: startswith "/"
+                mountpoint = l.strip()
+        fp.close()
+    elif sys.platform == "darwin":
+        mountpoint = os.path.abspath(path)
     return mountpoint

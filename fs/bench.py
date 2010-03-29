@@ -14,10 +14,12 @@ import random
 import shutil
 import socket
 import copy
+import pwd
 import threading
 from __builtin__ import open as _open # for open()
 
-from common.utils import *
+import version
+import modules.utils as utils
 
 OPTYPE_META = 1
 OPTYPE_IO = 0
@@ -25,38 +27,30 @@ OPTYPE_IO = 0
 __all__ = ["OPTYPE_META", "OPTYPE_IO"]
 
 class Bench():
-    """General file system benchmark"""
-    def __init__(self, opts=None, **kw):
-        self.config = opts
-        if opts is None:
-            self.config = fs.opts.Options()
-
-        self.opts, errstr = self.config.load(argv)
-        if errstr:
-            sys.stderr("error: %s\n" % errstr)
-            sys.exit(1)
-
+    """
+    General file system benchmark
+    """
+    def __init__(self, opts):
+        self.opts = opts
+        self.cfg = self.opts.opts
+        
         # Benchmark runtime environment
-        self.runtime = {}
-        self.runtime["version"] = version.PARAMARK_VERSION
-        self.runtime["date"] = version.PARAMARK_DATE
-        self.runtime["uid"] = os.getuid()
-        self.runtime["pid"] = os.getpid()
-        self.runtime["user"] = pwd.getpwuid(os.getuid())[0]
-        self.runtime["hostname"] = socket.gethostname()
-        self.runtime["platform"] = " ".join(os.uname())
-        self.runtime["cmdline"] = " ".join(sys.argv)
-        self.runtime["environ"] = copy.deepcopy(os.environ)
-        self.runtime["mountpoint"] = utils.get_mountpoint(self.opts["wdir"])
-        self.runtime["wdir"] = self.opts["wdir"]
+        self.runtime = self.opts.new_values()
+        self.runtime.version = version.PARAMARK_VERSION
+        self.runtime.date = version.PARAMARK_DATE
+        self.runtime.uid = os.getuid()
+        self.runtime.pid = os.getpid()
+        self.runtime.user = pwd.getpwuid(os.getuid())[0]
+        self.runtime.hostname = socket.gethostname()
+        self.runtime.platform = " ".join(os.uname())
+        self.runtime.cmdline = " ".join(sys.argv)
+        self.runtime.environ = copy.deepcopy(os.environ)
+        self.runtime.mountpoint = utils.get_fs_info(self.cfg.wdir)
+        self.runtime.wdir = self.cfg.wdir
         
-        # Post check and preparation
-        if self.opts["logdir"] is None:  # generate random logdir in cwd
-            self.opts["logdir"] = os.path.abspath("./pmlog-%s-%s" %
-                (self.runtime["user"], time.strftime("%j-%H-%M-%S")))
-        
-        # runtime passing variables
-        self.threads = []  # run set
+        self.threads = []
+
+        self.VERBOSE_LEVEL = 3
 
     def vs(self, msg):
         sys.stderr.write(msg)
@@ -71,18 +65,14 @@ class Bench():
         self.report.write()
          
     def load(self):
-        self.opts["hostid"] = 0
-        self.opts["pid"] = os.getpid()
-        self.opts["testid"] = 0
-        self.opts["verbose"] = False
-        if self.opts["verbosity"] >= 3:
-            self.opts["verbose"] = True
+        # TODO: setup GXP id here
+        self.cfg.hostid = 0
+        self.cfg.pid = os.getpid()
         
-        self.thread_sync = fs.bench.ThreadSync(self.opts["nthreads"])
-        for i in range(0, self.opts["nthreads"]):
-            self.opts["tid"] = i
-            self.threads.append(fs.bench.BenchThread(self.opts,
-                self.thread_sync))
+        self.thread_sync = ThreadSync(self.cfg.nthreads)
+        for i in range(0, self.cfg.nthreads):
+            self.cfg.tid = i
+            self.threads.append(BenchThread(self.cfg, self.thread_sync))
 
     def run(self):
         self.start = utils.timer()
@@ -107,6 +97,10 @@ class Bench():
         if self.opts["dryrun"]:
             return
         
+        if self.cfg.logdir is None:  # generate random logdir in cwd
+            self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
+                (self.runtime.user, time.strftime("%j-%H-%M-%S")))
+        
         # Initial log directory and database
         self.opts["logdir"] = utils.smart_makedirs(self.opts["logdir"],
             self.opts["confirm"])
@@ -127,7 +121,6 @@ class Bench():
 
         if self.opts["verbosity"] >= 1:
             self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
-
 
 class ThreadSync():
     """Thread synchornization"""

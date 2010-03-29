@@ -41,22 +41,35 @@ class Options:
             dest="help", default=False,
             help="show this help message and exit")
         
-        self.optParser.add_option("-v", "--verbosity", action="store",
-            type="int", dest="verbosity", metavar="NUM", default=0,
-            help="verbosity level: 0/1/2/3/4/5 (default: 0)")
-        
-        self.optParser.add_option("-d", "--dryrun", action="store_true",
-            dest="dryrun", default=False, 
-            help="dry run, do not execute (default: disabled)")
+        self.optParser.add_option("-p", "--print-default-conf", 
+            action="store_true", dest="printconf", default=False, 
+            help="print default configuration file and exit")
         
         self.optParser.add_option("-g", "--gxp", action="store_true",
             dest="gxpmode", default=False,
             help="execute in GXP mode (default: disabled)")
         
-        self.optParser.add_option("-p", "--print-default-conf", 
-            action="store_true", dest="printconf", default=False, 
-            help="print default configuration file and exit")
+        self.optParser.add_option("-c", "--conf", action="store", 
+            type="string", dest="conf", metavar="PATH", default="",
+            help="configuration file")
+        
+        # Options may be set in configuration file
+        # default values should be set to None
+        self.optParser.add_option("-v", "--verbosity", action="store",
+            type="int", dest="verbosity", metavar="NUM", default=None,
+            help="verbosity level: 0/1/2/3/4/5 (default: 0)")
+        
+        self.optParser.add_option("-d", "--dryrun", action="store_true",
+            dest="dryrun", default=None, 
+            help="dry run, do not execute (default: disabled)")
 
+    def _print_opts(self):
+        """
+        Debug
+        """
+        for k, v in self.opts.items():
+            print "debug: opts=%s, val=%s" % (k, v)
+        
     def has_opt(self, opt):
         return self.opts.has_attr(opt)
 
@@ -65,6 +78,9 @@ class Options:
         Set value of given option
         """
         self.opts.set_value(opt, val)
+
+    def get_val(self, opt):
+        return self.opts.get_value(opt)
 
     def set_subval(self, opt, subval):
         """
@@ -76,7 +92,6 @@ class Options:
         self.optParser.set_usage(usage)
 
     def parse_argv(self, argv):
-        print "parse argv"
         opts, self.args = self.optParser.parse_args(argv)
         self.opts.update(opts.__dict__)
         return self.opts, self.args
@@ -111,18 +126,57 @@ class Options:
         fp = StringIO.StringIO(self.DEFAULT_CONFIG_STRING)
         self.cfgParser.readfp(fp)
         fp.close()
-        loaded_files = self.cfgParser.read(
-            [os.path.expanduser("~/%s" % self.DEFAULT_CONF_FILENAME),
-             os.path.abspath(".%s" % self.DEFAULT_CONF_FILENAME),
-             os.path.abspath(self.opts.conf)])
+
+        try:
+            loaded_files = self.cfgParser.read(
+                [os.path.expanduser("~/%s" % self.DEFAULT_CONF_FILENAME),
+                 os.path.abspath(".%s" % self.DEFAULT_CONF_FILENAME),
+                 os.path.abspath(self.opts.conf)])
+        except:
+            sys.stderr.write("Error, corrupted configuration file\n")
+            sys.exit(1)
 
         if self.opts.verbosity >= 5 and loaded_files is not None:
             sys.stderr.write("Successfull load configuration from %s.\n" %
                 ", ".join(loaded_files))
+    
+    def save_conf(self, filename):
+        """
+        Save current configuration to file
+        """
+        fp = open(filename, "wb")
+        self.cfgParser.write(fp)
+        fp.close()
         
     def load(self):
         self.prompt_and_exit()
         self.parse_conf()
+
+        # Integrate command options and configurations
+        conf_sections = self.cfgParser.sections()
+        
+        # Global section
+        section = self.CONF_GLOBAL_SECTION
+        for k, v in self.cfgParser.items(section):
+            opt_val = self.get_val(k)
+            if opt_val is None:
+                self.set_val(k, eval(v))
+            else:
+                # Override configuration from command arguments
+                self.cfgParser.set(section, k, opt_val)
+
+        # Local sections
+        local_sections = list(conf_sections)
+        local_sections.remove(self.CONF_GLOBAL_SECTION)
+        for section in local_sections:
+            if self.opts.override:
+                # Override local options
+                for k, v in self.cfgParser.items(section):
+                    self.cfgParser.set(section, k, str(self.get_val(k)))
+            self.set_subval(section, self.cfgParser.items(section))
+
+    def new_values(self, values=None):
+        return Values(values)
 
 class Values:
     """
@@ -145,8 +199,26 @@ class Values:
     def has_attr(self, attr):
         return self.__dict__.has_key(attr)
         
-    def set_value(self, opt, val):
-        self.__dict__[opt] = val
+    def set_value(self, attr, val):
+        self.__dict__[attr] = val
+    
+    def get_value(self, attr):
+        if self.__dict__.has_key(attr):
+            return self.__dict__[attr]
+        else:
+            return None
+
+    def items(self):
+        return self.__dict__.items()
+
+FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
+[global]
+# Verbosity level (0-5)
+verbosity = 0
+
+# Dryrun, do nothing
+dryrun = False
+"""
         
 # OptionParser help string workaround
 # adapted from Tim Chase's code from following thread
