@@ -10,6 +10,7 @@
 
 import sys
 import os
+import stat
 import optparse
 import textwrap
 import ConfigParser
@@ -172,8 +173,10 @@ class Options:
             if self.opts.override:
                 # Override local options
                 for k, v in self.cfgParser.items(section):
-                    self.cfgParser.set(section, k, str(self.get_val(k)))
-            self.set_subval(section, self.cfgParser.items(section))
+                    if self.get_val(k) is not None:
+                        self.cfgParser.set(section, k, str(self.get_val(k)))
+            self.set_subval(section, 
+                map(lambda (k,v):(k,eval(v)), self.cfgParser.items(section)))
 
     def new_values(self, values=None):
         return Values(values)
