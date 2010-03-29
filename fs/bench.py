@@ -19,7 +19,8 @@ import threading
 from __builtin__ import open as _open # for open()
 
 import version
-import modules.utils as utils
+from modules.utils import *
+from modules.opts import Values
 
 OPTYPE_META = 1
 OPTYPE_IO = 0
@@ -35,7 +36,7 @@ class Bench():
         self.cfg = self.opts.opts
         
         # Benchmark runtime environment
-        self.runtime = self.opts.new_values()
+        self.runtime = Values()
         self.runtime.version = version.PARAMARK_VERSION
         self.runtime.date = version.PARAMARK_DATE
         self.runtime.uid = os.getuid()
@@ -45,11 +46,13 @@ class Bench():
         self.runtime.platform = " ".join(os.uname())
         self.runtime.cmdline = " ".join(sys.argv)
         self.runtime.environ = copy.deepcopy(os.environ)
-        self.runtime.mountpoint = utils.get_fs_info(self.cfg.wdir)
+        self.runtime.mountpoint = get_fs_info(self.cfg.wdir)
         self.runtime.wdir = self.cfg.wdir
+        #TODO: setup hostid by GXP
+        self.runtime.hid = 0
         
         self.threads = []
-
+       
         self.VERBOSE_LEVEL = 3
 
     def vs(self, msg):
@@ -65,44 +68,45 @@ class Bench():
         self.report.write()
          
     def load(self):
-        # TODO: setup GXP id here
-        self.cfg.hostid = 0
-        self.cfg.pid = os.getpid()
-        
-        self.thread_sync = ThreadSync(self.cfg.nthreads)
+        self.threadsync = ThreadSync(self.cfg.nthreads)
         for i in range(0, self.cfg.nthreads):
-            self.cfg.tid = i
-            self.threads.append(BenchThread(self.cfg, self.thread_sync))
+            # setup threads
+            cfg = copy.deepcopy(self.cfg)
+            cfg.hid = self.runtime.hid
+            cfg.pid = self.runtime.pid
+            cfg.tid = i
+            cfg.verbose = False
+            if self.cfg.verbosity > self.VERBOSE_LEVEL:
+                cfg.verbose = True
+            self.threads.append(BenchThread(self.threadsync, cfg))
 
     def run(self):
-        self.start = utils.timer()
+        self.start = timer()
         
-        # shuffle threads to avoid scheduling effect
-        #random.shuffle(self.threads)
         for t in self.threads:
             t.start()
 
         for t in self.threads:
             t.join()
         
-        if self.opts["dryrun"]:
+        if self.cfg.dryrun:
             sys.stdout.write("Dryrun, nothing executed.\n")
         
-        self.end = utils.timer()
+        self.end = timer()
         
-        self.runtime["start"] = "%r" % self.start
-        self.runtime["end"] = "%r" % self.end
+        self.runtime.start = "%r" % self.start
+        self.runtime.end = "%r" % self.end
 
     def save(self):
-        if self.opts["dryrun"]:
+        if self.cfg.dryrun:
             return
         
         if self.cfg.logdir is None:  # generate random logdir in cwd
             self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
-                (self.runtime.user, time.strftime("%j-%H-%M-%S")))
+                   (self.runtime.user, time.strftime("%j-%H-%M-%S")))
         
         # Initial log directory and database
-        self.opts["logdir"] = utils.smart_makedirs(self.opts["logdir"],
+        self.opts["logdir"] = smart_makedirs(self.opts["logdir"],
             self.opts["confirm"])
         logdir = os.path.abspath(self.opts["logdir"])
         
@@ -123,7 +127,9 @@ class Bench():
             self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
 
 class ThreadSync():
-    """Thread synchornization"""
+    """
+    Thread synchornization
+    """
     def __init__(self, nthreads):
         self.n = nthreads
         self.cnt = 0
@@ -142,35 +148,73 @@ class ThreadSync():
         self.event.wait()
 
 class BenchThread(threading.Thread):
-    """Benchmarking thread that executes a series of operations"""
-    def __init__(self, opts, sync):
+    """
+    Benchmarking thread that executes a series of operations
+    """
+    def __init__(self, sync, cfg):
         threading.Thread.__init__(self)
         
-        self.opts = opts
         self.sync = sync
+        self.cfg = cfg
+        self.name = "Thread h%s:p%s:t%s" \
+            % (self.cfg.hid, self.cfg.pid, self.cfg.tid)
+
         self.synctime = []
-        self.hostid = opts["hostid"]
-        self.pid = opts["pid"]
-        self.tid = opts["tid"]
-        self.verbose = opts["verbose"]
-        self.dryrun = opts["dryrun"]
-        self.ioopts = opts["ioopts"]
-        self.name = "Thread h%s:p%s:t%s" % (self.hostid, self.pid, self.tid)
-
-        self.load = BenchLoad(opts)
-        self.load.produce()
-
         self.opset = []
-        for o in opts["metaops"] + opts["ioops"]:
-            ostr = "%s(files=self.load.%s(), " \
-                "verbose=%s, dryrun=%s, **self.opts[\"%s\"])" \
-                % (o, o, self.verbose, self.dryrun, o)
+        self.load = Values()
+
+        self._load()
+
+    def _load(self):
+        # Generate load
+        self.load.rdir = os.path.abspath("%s/pmark-wdir-%s-%s-%s-%03d" \
+            % (self.cfg.wdir, self.cfg.hid, self.cfg.pid, self.cfg.tid, 
+            random.randint(0,999)))
+
+        self._meta_load()
+        self._io_load()
+
+        # Configure operations
+        for o in self.cfg.metaops + self.cfg.ioops:
+            ostr = "%s(files=self.load.%s, " \
+                "verbose=%s, dryrun=%s, **self.cfg.%s.get_kws())" \
+                % (o, o, self.cfg.verbose, self.cfg.dryrun, o)
             op = eval(ostr)
             self.opset.append(op)
 
+    def _meta_load(self):
+        self.load.meta_dirs = []
+        self.load.meta_files = []
+        queue = [ copy.deepcopy(self.load.rdir) ]
+        i = l = 0
+        while i < self.cfg.opcnt:
+            if i % self.cfg.factor == 0:
+                parent = queue.pop(0)
+                l += 1
+            child = os.path.normpath("%s/L%d-%d" % (parent, l, i))
+            self.load.meta_dirs.append(child)
+            self.load.meta_files.append("%s/%d-%d.file" % (child, l, i))
+            queue.append(child)
+            i += 1
+        
+        self.load.mkdir = self.load.meta_dirs
+        dirs = list(self.load.meta_dirs)
+        dirs.reverse()
+        self.load.rmdir = dirs
+        for o in ["creat", "access", "open", "open_close", "stat_exist",
+            "stat_non", "utime", "chmod", "rename", "unlink"]:
+            self.load.set_value(o, self.load.meta_files)
+
+    def _io_load(self):
+        self.load.io_file = \
+            "%s/io-%d.file" % (self.load.rdir, random.randint(0,999))
+        
+        for o in FSOP_IO:
+            self.load.set_value(o, self.load.io_file)
+        
     def run(self):
-        if not self.dryrun:
-            os.makedirs(self.load.root_dir())
+        if not self.cfg.dryrun:
+            os.makedirs(self.load.rdir)
         self.barrier()
         
         for op in self.opset:
@@ -183,78 +227,8 @@ class BenchThread(threading.Thread):
     def barrier(self, name=""):
         self.sync.barrier()
         self.synctime.append((name, timer()))
-        #if len(self.synctime) > 1:
-        #    print name, self.synctime[-1][1] - self.synctime[-2][1]
         
 __all__.append("BenchThread")
-
-class BenchLoad:
-    """Metadata workload generator"""
-    def __init__(self, opts, **kw):
-        for o in ["wdir", "hostid", "pid", "tid"]: 
-            self.__dict__[o] = opts[o]
-        
-        # only retrieve metadata part options
-        self.opts = {}
-        for o in FSOP_META + FSOP_IO:
-            self.opts[o] = opts[o]
-        
-        for k, v in opts["metaopts"].items(): 
-            self.__dict__[k] = v
-
-        self.rdir = None    # root directory to perform load
-        self.dirs = []
-        self.dir = None
-        self.files = []
-        self.file = None
-
-        for o in ["creat", "access", "open", "open_close", "stat_exist",
-            "stat_non", "utime", "chmod", "rename", "unlink"]:
-            self.__dict__[o] = self.get_files
-
-        for o in FSOP_IO:
-            self.__dict__[o] = self.get_file
-    
-    def produce(self):
-        self.rdir = "%s/pmark-wdir-%s-%s-%s-%03d" \
-            % (self.wdir, self.hostid, self.pid, self.tid, 
-            random.randint(0,999))
-        
-        queue = [ copy.deepcopy(self.rdir) ]
-        i = l = 0
-        while i < self.opcnt:
-            if i % self.factor == 0:
-                parent = queue.pop(0)
-                l += 1
-            child = os.path.normpath("%s/L%d-%d" % (parent, l, i))
-            self.dirs.append(child)
-            self.files.append("%s/%d-%d.file" % (child, l, i))
-            queue.append(child)
-            i += 1
-
-        self.file = "%s/io-%d.file" % (self.rdir, random.randint(0,999))
-
-    def root_dir(self):
-        return self.rdir
-
-    def get_dirs(self):
-        return self.dirs
-    
-    def get_files(self):
-        return self.files
-
-    def get_file(self):
-        return self.file
-
-    def mkdir(self):
-        # TODO: setup on local options
-        return self.dirs
-
-    def rmdir(self):
-        # TODO: setup on local options
-        dirs = list(self.dirs)
-        dirs.reverse()
-        return dirs
 
 class Op:
     def __init__(self):
@@ -336,7 +310,10 @@ class creat(MetaOp):
         MetaOp.__init__(self, "creat", files, verbose, dryrun)
         self.flags = flags
         self.mode = mode
+        print kw
+        print "pre", self.flags, self.mode
         self.updatekw(kw)
+        print "after", self.flags, self.mode
     
     def execute(self):
         for f in self.files:
@@ -345,6 +322,7 @@ class creat(MetaOp):
                     % (f, self.flags, self.mode))
             if self.dryrun: continue
             s = timer()
+            print f, self.flags, self.mode
             os.close(os.open(f, self.flags, self.mode))
             self.res.append((s, timer()))
 

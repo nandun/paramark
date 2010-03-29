@@ -208,8 +208,12 @@ class Values:
         else:
             return None
 
+    def get_kws(self):
+        return self.__dict__
+
     def items(self):
         return self.__dict__.items()
+
 
 FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 [global]
