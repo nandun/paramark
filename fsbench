@@ -30,7 +30,7 @@ def standalone_main(fsopt):
         return 0
     mybench.load()
     mybench.run()
-    mybench.save()
+    #mybench.save()
     #mybench.report()
     return 0
 

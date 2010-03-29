@@ -191,7 +191,7 @@ def get_fs_info(path):
     """
     Get the mountpoint where the path belongs to
     """
-    if sys.platform == "linux":
+    if sys.platform == "linux2":
         path = os.path.abspath(path)
         mountpoint = None
         fp = open("/etc/mtab", "r")
