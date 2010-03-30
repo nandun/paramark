@@ -53,8 +53,7 @@ class Options(CommonOptions):
     
     def load(self):
         CommonOptions.load(self)
-        
-        # Rearrange operation sequence based on dependencies
+        # Rearrange operation sequence according to dependencies
         if len(self.opts.meta) > 0:
             _meta = ["mkdir", "rmdir"]
             if len(list_intersect([["creat", "access", "open", "open_close",
@@ -64,98 +63,16 @@ class Options(CommonOptions):
             
             for o in self.opts.meta:
                 if o not in _meta:
-                    _metaops.insert(-1, o)
+                    _meta.insert(-1, o)
             self.opts.meta = _meta
         
         if len(self.opts.io) > 0:
             _io = ["write"]
             for o in self.opts.io:
                 if o not in _io:
-                    _ioops.append(o)
+                    _io.append(o)
             self.opts.io = _io
         
-    def _parse_conf(self, fp, filename=[]):
-        if fp:
-            self.cfgParser.readfp(fp)
-        if filename:
-            loaded_files = self.cfgParser.read(filename)
-
-        # MUST keep consistent with configure file format
-        for section in ["runtime"]:
-            if self.cfgParser.has_section(section):
-                for k, v in self.cfgParser.items(section):
-                    self.set_val(k, eval(v))
-        
-        # Configuration for each operation
-        for op in FSOP_META + FSOP_IO:
-            if self.cfgParser.has_section(op):
-                self.set_subval(op, map(lambda (k,v):(k,eval(v)),
-                    self.cfgParser.items(op)))
-
-        # Override local options
-        for sec in ["meta", "io"]:
-            section = sec + "opts"
-            self.set_subval(section,
-                map(lambda (k,v):(k,eval(v)), self.cfgParser.items(section)))
-            if self.cfgParser.has_section(section) and \
-               self.cfgParser.has_option(section, "overwrite") and \
-               self.cfgParser.getboolean(section, "overwrite"):
-                for k, v in self.cfgParser.items(sec + "opts"):
-                    for op in self.opts[sec + "ops"]:
-                        if self.opts[op].has_key(k):
-                            self.opts[op][k] = eval(v)
-        
-        if filename:
-          return loaded_files
-        return None
-
-    def _load(self):
-        errstr = None
-
-        # Load from command options
-        # section runtime
-        self.opts["report"] = opts.report
-        
-        # Check options here
-        for o in self.opts["metaops"] + self.opts["ioops"]:
-            if o not in FSOP_META + FSOP_IO:
-                errstr = "invalid filesystem operation %s" % o
-        
-        # Rearrange operation sequence based on dependencies
-        if len(self.opts["metaops"]) > 0:
-            _metaops = ["mkdir", "rmdir"]
-            if len(list_intersect([["creat", "access", "open", "open_close",
-                "stat_exist", "stat_non", "utime", "chmod", "rename", 
-                "unlink"],
-                self.opts["metaopts"]])) > 0:
-                _metaops.insert(-1, "creat")
-            
-            for o in self.opts["metaops"]:
-                if o not in _metaops:
-                    _metaops.insert(-1, o)
-            self.opts["metaops"] = _metaops
-
-        _ioops = ["write"]
-        for o in self.opts["ioops"]:
-            if o not in _ioops:
-                _ioops.append(o)
-        self.opts["ioops"] = _ioops
-        
-        section = "runtime"
-        for o in ["wdir", "logdir", "nthreads", 
-            "confirm", "verbosity", "dryrun"]: 
-            # refer above for load options
-            if opts.__dict__[o] is not None:
-                self.cfg.set(section, o, "%s" % opts.__dict__[o])
-                self.opts[o] = opts.__dict__[o]
-        self.opts["wdir"] = os.path.abspath(self.opts["wdir"])
-
-        if self.opts["verbosity"] >= 5 and loaded_files is not None:
-            sys.stderr.write("Successfull load configuration from %s.\n" %
-                ", ".join(loaded_files))
-
-        return self.opts, errstr
-
 ##########################################################################
 # Default configure string
 # Hard-coded for installation convenience
