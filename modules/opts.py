@@ -176,7 +176,7 @@ class Options:
                     if self.get_val(k) is not None:
                         self.cfgParser.set(section, k, str(self.get_val(k)))
             self.set_subval(section, 
-                map(lambda (k,v):(k,eval(v)), self.cfgParser.items(section)))
+                map(lambda (k, v):(k, eval(v)), self.cfgParser.items(section)))
 
     def new_values(self, values=None):
         return Values(values)
