@@ -32,9 +32,9 @@ import xml.dom.minidom
 import numpy
 
 import version 
-import common.utils as utils
-import common.plot as plot
-import common.DHTML as DHTML
+import modules.utils as utils
+import modules.plot as plot
+import modules.DHTML as DHTML
 import bench
 import data
 
