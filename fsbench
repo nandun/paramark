@@ -47,14 +47,11 @@ def gxpc_main(fsopt):
         opt.print_help()
         return 1
     
-    wp = os.fdopen(3, "wb")
-    fp = os.fdopen(4, "rb")
-    hosts = gxp.get_all_hosts(wp, fp)
-    if hosts is None:
-        sys.stderr.write("error: failed to get all hosts\n")
-        return 1
-    rank = gxp.get_rank()
-    myhost = hosts[rank]
+    mybench = fs.bench.Bench(fsopt)
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
 
 # Main entry
 def main(argv):
