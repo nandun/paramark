@@ -21,11 +21,11 @@ from __builtin__ import open as _open # for open()
 import version
 from modules.utils import *
 from modules.opts import Values
+from const import *
+from data import Database as FSDatabase
+import report
 
-OPTYPE_META = 1
-OPTYPE_IO = 0
-
-__all__ = ["OPTYPE_META", "OPTYPE_IO"]
+__all__ = []
 
 class Bench():
     """
@@ -59,12 +59,12 @@ class Bench():
         sys.stderr.write(msg)
 
     def report(self, path=None):
-        logdir = self.opts["logdir"]
-        if self.opts["report"]:
-            logdir = self.opts["report"]
+        logdir = self.cfg.logdir
+        if self.cfg.report:
+            logdir = self.cfg.report
         if path:
             logdir = path
-        self.report = fs.report.HTMLReport(self.opts["logdir"])
+        self.report = report.HTMLReport(self.cfg.logdir)
         self.report.write()
          
     def load(self):
@@ -106,24 +106,24 @@ class Bench():
                    (self.runtime.user, time.strftime("%j-%H-%M-%S")))
         
         # Initial log directory and database
-        self.opts["logdir"] = smart_makedirs(self.opts["logdir"],
-            self.opts["confirm"])
-        logdir = os.path.abspath(self.opts["logdir"])
+        self.cfg.logdir = smart_makedirs(self.cfg.logdir,
+            self.cfg.confirm)
+        logdir = os.path.abspath(self.cfg.logdir)
         
         # Save used configuration file
-        self.config.save_conf("%s/fsbench.conf" % logdir)
-        if self.opts["verbosity"] >= 1:
+        self.opts.save_conf("%s/fsbench.conf" % logdir)
+        if self.cfg.verbosity >= 1:
             self.vs("applied configurations saved to %s/fsbench.conf\n" 
                 % logdir)
         
         # Save results
-        self.db = fs.data.Database("%s/fsbench.db" % logdir, True)
+        self.db = FSDatabase("%s/fsbench.db" % logdir, True)
         self.db.ins_runtime(self.runtime)
         self.db.ins_conf('%s/fsbench.conf' % logdir)
         self.db.ins_rawdata(self.threads, self.start)
         self.db.close()
 
-        if self.opts["verbosity"] >= 1:
+        if self.cfg.verbosity >= 1:
             self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
 
 class ThreadSync():
@@ -263,10 +263,6 @@ class MetaOp(Op):
         self.verbose = verbose
         self.dryrun = dryrun
     
-FSOP_META = ["mkdir", "creat", "access", "open", "open_close", "stat_exist", 
-    "stat_non", "utime", "chmod", "rename", "unlink", "rmdir"]
-__all__.extend(FSOP_META)
-
 class mkdir(MetaOp):
     """Make a list of directories by os.mkdir()"""
     def __init__(self, files, verbose=False, dryrun=False, **kw):
@@ -521,10 +517,6 @@ class IOOp(Op):
         self.flags = flags
         self.verbose = verbose
         self.dryrun = dryrun
-
-FSOP_IO = ["read", "reread", "write", "rewrite", "fread", "freread",
-    "fwrite", "frewrite", "offsetread", "offsetwrite"]
-__all__.extend(FSOP_IO)
 
 class read(IOOp):
     """Read a files by os.read() with give parameters"""

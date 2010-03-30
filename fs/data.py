@@ -15,7 +15,7 @@ import ConfigParser
 
 import numpy
 
-from bench import OPTYPE_META, OPTYPE_IO, FSOP_META, FSOP_IO
+from const import *
 
 class Database:
     """Store/Retrieve benchmark results data"""
@@ -131,8 +131,9 @@ class Database:
                 sync_name, sync_time = t.synctime.pop(0)
                 assert sync_name == o.name
                 data = map(lambda (s,e):(s-start,e-start), o.res)
-                self._ins_rawdata(table, (t.hostid, t.pid, t.tid, o.name, 
-                        o.type, self._obj2str(data), sync_time-sync_prev_time))
+                self._ins_rawdata(table, (t.cfg.hid, t.cfg.pid, t.cfg.tid, 
+                    o.name, o.type, self._obj2str(data), 
+                    sync_time-sync_prev_time))
                 sync_prev_name, sync_prev_time = sync_name, sync_time
     
     def _sel(self, one, table, columns, where, group):
@@ -181,9 +182,9 @@ class Database:
         # TODO:
         # follow three variables should be retrieved accroding to oper
         # instead of global ones, but need to fix opts setting part
-        opcnt = self.get_conf_val('metaopts', 'opcnt')
-        fsize = self.get_conf_val('ioopts', 'fsize')
-        bsize = self.get_conf_val('ioopts', 'bsize')
+        opcnt = self.get_conf_val('global', 'opcnt')
+        fsize = self.get_conf_val('global', 'fsize')
+        bsize = self.get_conf_val('global', 'bsize')
         
         for hid,pid,tid,op,optype,dat,sync in self._sel(False, src, 
             ['hostid', 'pid', 'tid', 'oper', 'optype', 'data', 'sync'], 
@@ -216,9 +217,9 @@ class Database:
         # TODO:
         # follow three variables should be retrieved accroding to oper
         # instead of global ones, but need to fix opts setting part
-        opcnt = self.get_conf_val('metaopts', 'opcnt')
-        fsize = self.get_conf_val('ioopts', 'fsize')
-        bsize = self.get_conf_val('ioopts', 'bsize')
+        opcnt = self.get_conf_val('global', 'opcnt')
+        fsize = self.get_conf_val('global', 'fsize')
+        bsize = self.get_conf_val('global', 'bsize')
         
         for h in self.get_hosts():
             for o in self.get_opers():
@@ -247,9 +248,9 @@ class Database:
         # TODO:
         # follow three variables should be retrieved accroding to oper
         # instead of global ones, but need to fix opts setting part
-        opcnt = self.get_conf_val('metaopts', 'opcnt')
-        fsize = self.get_conf_val('ioopts', 'fsize')
-        bsize = self.get_conf_val('ioopts', 'bsize')
+        opcnt = self.get_conf_val('global', 'opcnt')
+        fsize = self.get_conf_val('global', 'fsize')
+        bsize = self.get_conf_val('global', 'bsize')
         
         for o in self.get_opers():
             self.cur.execute("SELECT tid,optype,agg,time FROM %s "
@@ -369,8 +370,6 @@ class Database:
         thputmax = numpy.max(thputlist)
         thputstd = numpy.std(thputlist)
         return thputavg, thputmin, thputmax, thputstd, thputlist
-        #for dat in map(lambda (v,):self._str2obj(v), self.cur.fetchall()):
-        #    print oper, host, dat
     
     def io_get_data(self, **where):
         qstr = "SELECT data FROM io %s"

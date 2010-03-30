@@ -30,8 +30,8 @@ def standalone_main(fsopt):
         return 0
     mybench.load()
     mybench.run()
-    #mybench.save()
-    #mybench.report()
+    mybench.save()
+    mybench.report()
     return 0
 
 # GXP entry
