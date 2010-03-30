@@ -69,3 +69,13 @@ def get_all_hosts(wp, fp):
     hosts.sort()
     hosts_list = map(lambda (idx,host): host, hosts)
     return hosts_list
+
+def broadcast(wp, msg):
+    wp.write(msg)
+    wp.write('\n')
+    wp.flush()
+
+def receive(rp):
+    msg = rp.read()
+    assert msg != ""
+    return msg.strip()

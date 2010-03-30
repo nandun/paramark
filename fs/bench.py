@@ -15,6 +15,8 @@ import shutil
 import socket
 import copy
 import pwd
+import cPickle
+import StringIO
 import threading
 from __builtin__ import open as _open # for open()
 
@@ -24,6 +26,7 @@ from modules.opts import Values
 from const import *
 from data import Database as FSDatabase
 import report
+from modules import gxp
 
 __all__ = []
 
@@ -48,8 +51,9 @@ class Bench():
         self.runtime.environ = copy.deepcopy(os.environ)
         self.runtime.mountpoint = get_fs_info(self.cfg.wdir)
         self.runtime.wdir = self.cfg.wdir
-        #TODO: setup hostid by GXP
+        # May be set later in GXP mode
         self.runtime.hid = 0
+        self.runtime.nhosts = 1
         
         self.threads = []
        
@@ -59,6 +63,12 @@ class Bench():
         sys.stderr.write(msg)
 
     def report(self, path=None):
+        if self.cfg.dryrun:
+            return
+
+        if self.cfg.gxpmode and self.gxp.rank != 0:
+            return
+        
         logdir = self.cfg.logdir
         if self.cfg.report:
             logdir = self.cfg.report
@@ -68,6 +78,15 @@ class Bench():
         self.report.write()
          
     def load(self):
+        if self.cfg.gxpmode:
+            self.gxp = Values()
+            self.gxp.wp = os.fdopen(3, "wb")
+            self.gxp.rp = os.fdopen(4, "rb")
+            self.gxp.rank = gxp.get_rank()
+            self.gxp.size = gxp.get_size()
+            self.runtime.hid = self.gxp.rank
+            self.runtime.nhosts = self.gxp.size
+
         self.threadsync = ThreadSync(self.cfg.nthreads)
         for i in range(0, self.cfg.nthreads):
             # setup threads
@@ -76,6 +95,8 @@ class Bench():
             cfg.pid = self.runtime.pid
             cfg.tid = i
             cfg.verbose = False
+            if i == 0 and self.cfg.gxpmode:
+                cfg.gxp = self.gxp
             if self.cfg.verbosity > self.VERBOSE_LEVEL:
                 cfg.verbose = True
             self.threads.append(BenchThread(self.threadsync, cfg))
@@ -100,12 +121,24 @@ class Bench():
     def save(self):
         if self.cfg.dryrun:
             return
-        
+    
+        if self.cfg.gxpmode:
+            # Gather results
+            self.send_res()
+            if self.gxp.rank == 0:
+                reslist = []
+                for i in range(0, self.gxp.size):
+                    reslist.append(self.recv_res())
+            else:
+                return
+       
         if self.cfg.logdir is None:  # generate random logdir in cwd
             self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
                    (self.runtime.user, time.strftime("%j-%H-%M-%S")))
         
         # Initial log directory and database
+        if self.cfg.gxpmode:
+            self.cfg.confirm = False
         self.cfg.logdir = smart_makedirs(self.cfg.logdir,
             self.cfg.confirm)
         logdir = os.path.abspath(self.cfg.logdir)
@@ -120,11 +153,28 @@ class Bench():
         self.db = FSDatabase("%s/fsbench.db" % logdir, True)
         self.db.ins_runtime(self.runtime)
         self.db.ins_conf('%s/fsbench.conf' % logdir)
-        self.db.ins_rawdata(self.threads, self.start)
+
+        if self.cfg.gxpmode:
+            for res in reslist:
+                self.db.ins_rawdata(res, self.start)
+        else:
+            self.db.ins_rawdata([t.get_res() for t in self.threads], 
+                self.start)
         self.db.close()
 
         if self.cfg.verbosity >= 1:
             self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
+    
+    def send_res(self):
+        # Packing string without newlines
+        res = cPickle.dumps([t.get_res() for t in self.threads], 0)
+        self.gxp.wp.write('|'.join(res.split('\n')))
+        self.gxp.wp.write("\n")
+        self.gxp.wp.flush()
+
+    def recv_res(self):
+        res = self.gxp.rp.readline().strip('\n')
+        return cPickle.loads('\n'.join(res.split('|')))
 
 class ThreadSync():
     """
@@ -226,8 +276,36 @@ class BenchThread(threading.Thread):
 
     def barrier(self, name=""):
         self.sync.barrier()
+        if self.cfg.gxpmode and self.cfg.tid == 0:
+            self.gxp_barrier()
         self.synctime.append((name, timer()))
-        
+
+    def gxp_barrier(self):
+        self.cfg.gxp.wp.write('\n')
+        self.cfg.gxp.wp.flush()
+        for i in range(self.cfg.gxp.size):
+            r = self.cfg.gxp.rp.readline()
+            if r == "": return 1
+        return 0
+
+    def get_res(self):
+        """
+        Return a Values() object stored with benchmark results
+        """
+        val = Values()
+        val.hid = self.cfg.hid
+        val.pid = self.cfg.pid
+        val.tid = self.cfg.tid
+        val.synctime = self.synctime
+        val.opset = []
+        for o in self.opset:
+            v = Values()
+            v.name = o.name
+            v.type = o.type
+            v.res = o.res
+            val.opset.append(v)
+        return val
+
 __all__.append("BenchThread")
 
 class Op:

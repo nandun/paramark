@@ -86,7 +86,8 @@ class Database:
     def _ins_rawdata(self, table, data):
         """Insert data to table in rawdata format"""
         assert len(data) == self.FORMATS_LEN['rawdata']
-        self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?,?)" % table, data)
+        self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?,?)" 
+            % table, data)
     
     def _ins_aggdata(self, table, data):
         """Insert data to table in aggdata format"""
@@ -117,7 +118,7 @@ class Database:
                 self.cur.execute('INSERT INTO %s VALUES (?,?,?)' % table,
                     (sec, opt, val))
         
-    def ins_rawdata(self, threads, start, overwrite=True):
+    def ins_rawdata(self, res, start, overwrite=True):
         """Save result data to table data
         runset:
         pickleValue:
@@ -125,13 +126,13 @@ class Database:
         """
         table = 'data'
         self.create_table(table, self.FORMATS['rawdata'], overwrite) 
-        for t in threads:
-            sync_prev_name, sync_prev_time = t.synctime.pop(0)
-            for o in t.opset:
-                sync_name, sync_time = t.synctime.pop(0)
+        for r in res:
+            sync_prev_name, sync_prev_time = r.synctime.pop(0)
+            for o in r.opset:
+                sync_name, sync_time = r.synctime.pop(0)
                 assert sync_name == o.name
                 data = map(lambda (s,e):(s-start,e-start), o.res)
-                self._ins_rawdata(table, (t.cfg.hid, t.cfg.pid, t.cfg.tid, 
+                self._ins_rawdata(table, (r.hid, r.pid, r.tid, 
                     o.name, o.type, self._obj2str(data), 
                     sync_time-sync_prev_time))
                 sync_prev_name, sync_prev_time = sync_name, sync_time
