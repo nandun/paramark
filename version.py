@@ -20,8 +20,8 @@
 # ParaMark Information
 #
 
-PARAMARK_VERSION = 0.4
-PARAMARK_DATE = "2010-03-08"
+PARAMARK_VERSION = 0.5
+PARAMARK_DATE = "2010-03-31"
 PARAMARK_AUTHOR = "Nan Dun"
 PARAMARK_BUG_REPORT = "dunnan@yl.is.s.u-tokyo.ac.jp"
 PARAMARK_WEB = "http://paramark.googlecode.com/"

@@ -74,7 +74,7 @@ class Bench():
             logdir = self.cfg.report
         if path:
             logdir = path
-        self.report = report.HTMLReport(self.cfg.logdir)
+        self.report = report.HTMLReport(logdir)
         self.report.write()
          
     def load(self):
