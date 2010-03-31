@@ -206,7 +206,6 @@ class Database:
     
     def _get_sync_time(self, listofsync):
         # TODO
-        # avg?
         #return numpy.max(listofsync)
         return numpy.average(listofsync)
 
@@ -239,7 +238,8 @@ class Database:
                 thavg = numpy.average(thlist)
                 thstd = numpy.std(thlist)
                 self._ins_aggdata(table, \
-                    (h,-1,n_threads,o,optype,thmin,thmax,thavg,thagg,thstd,tm))
+                    (h,-1,n_threads,o,optype,thmin,thmax, \
+                     thavg,thagg,thstd,tm))
     
     def agg_all(self, overwrite=False):
         src = 'data1'
