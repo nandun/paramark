@@ -191,6 +191,20 @@ class Database:
             ['hostid', 'pid', 'tid', 'oper', 'optype', 'data', 'sync'], 
             None, None):
             dat = map(lambda (s,e):(e-s), self._str2obj(dat))
+            
+            # time.time() may have low resolution and cause zero elapsed time
+            # use average value as subsititions of zero values
+            if 0 in dat:
+                avg = numpy.average(dat)
+                assert avg != 0
+                _dat = []
+                for d in dat:
+                    if d == 0:
+                        _dat.append(avg)
+                    else:
+                        _dat.append(d)
+                dat = _dat
+
             if optype == OPTYPE_META:
                 thlist = map(lambda t:1.0/t, dat)
                 thagg = opcnt / numpy.sum(dat)
