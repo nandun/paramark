@@ -13,8 +13,7 @@ import sqlite3
 import cPickle
 import ConfigParser
 
-import numpy
-
+from modules import num
 from const import *
 
 class Database:
@@ -195,7 +194,7 @@ class Database:
             # time.time() may have low resolution and cause zero elapsed time
             # use average value as subsititions of zero values
             if 0 in dat:
-                avg = numpy.average(dat)
+                avg = num.average(dat)
                 assert avg != 0
                 _dat = []
                 for d in dat:
@@ -207,21 +206,21 @@ class Database:
 
             if optype == OPTYPE_META:
                 thlist = map(lambda t:1.0/t, dat)
-                thagg = opcnt / numpy.sum(dat)
+                thagg = opcnt / num.sum(dat)
             elif optype == OPTYPE_IO:
                 thlist = map(lambda t:bsize/t, dat)
-                thagg = fsize / numpy.sum(dat)
-            thmin = numpy.min(thlist)
-            thmax = numpy.max(thlist)
-            thavg = numpy.average(thlist)
-            thstd = numpy.std(thlist)
+                thagg = fsize / num.sum(dat)
+            thmin = num.min(thlist)
+            thmax = num.max(thlist)
+            thavg = num.average(thlist)
+            thstd = num.std(thlist)
             self._ins_aggdata(table, (hid,pid,tid,op,optype,thmin,thmax,thavg,
                 thagg,thstd,sync))
     
     def _get_sync_time(self, listofsync):
         # TODO
-        #return numpy.max(listofsync)
-        return numpy.average(listofsync)
+        #return num.max(listofsync)
+        return num.average(listofsync)
 
     def agg_host(self, overwrite=False):
         src = 'data0'
@@ -247,10 +246,10 @@ class Database:
                     thagg = n_threads * opcnt / tm
                 elif optype == OPTYPE_IO:
                     thagg = n_threads * fsize / tm
-                thmin = numpy.min(thlist)
-                thmax = numpy.max(thlist)
-                thavg = numpy.average(thlist)
-                thstd = numpy.std(thlist)
+                thmin = num.min(thlist)
+                thmax = num.max(thlist)
+                thavg = num.average(thlist)
+                thstd = num.std(thlist)
                 self._ins_aggdata(table, \
                     (h,-1,n_threads,o,optype,thmin,thmax, \
                      thavg,thagg,thstd,tm))
@@ -272,16 +271,16 @@ class Database:
                 "WHERE oper='%s'" % (src, o))
             tidlist, optype, thlist, tmlist = zip(*self.cur.fetchall())
             optype = optype[0]
-            n_threads = int(numpy.sum(tidlist))
+            n_threads = int(num.sum(tidlist))
             tm = self._get_sync_time(tmlist)
             if optype == OPTYPE_META:
                 thagg = n_threads * opcnt / tm
             elif optype == OPTYPE_IO:
                 thagg = n_threads * fsize / tm
-            thmin = numpy.min(thlist)
-            thmax = numpy.max(thlist)
-            thavg = numpy.average(thlist)
-            thstd = numpy.std(thlist)
+            thmin = num.min(thlist)
+            thmax = num.max(thlist)
+            thavg = num.average(thlist)
+            thstd = num.std(thlist)
             self._ins_aggdata(table,
                 (-1,-1,n_threads,o,optype,thmin,thmax,thavg,thagg,thstd,tm))
 
@@ -338,11 +337,11 @@ class Database:
         self.cur.execute(qstr)
         thputlist = []
         for dat in map(lambda (v,):self._str2obj(v), self.cur.fetchall()):
-            thputlist.append(len(dat)/numpy.sum(map(lambda (s, e):e-s, dat)))
-        thputavg = numpy.average(thputlist)
-        thputmin = numpy.min(thputlist)
-        thputmax = numpy.max(thputlist)
-        thputstd = numpy.std(thputlist)
+            thputlist.append(len(dat)/num.sum(map(lambda (s, e):e-s, dat)))
+        thputavg = num.average(thputlist)
+        thputmin = num.min(thputlist)
+        thputmax = num.max(thputlist)
+        thputstd = num.std(thputlist)
         return thputavg, thputmin, thputmax, thputstd, thputlist
     
     def meta_get_tid_and_data(self, **where):
@@ -379,11 +378,11 @@ class Database:
         self.cur.execute(qstr)
         thputlist = []
         for dat in map(lambda (v,):self._str2obj(v), self.cur.fetchall()):
-            thputlist.append(len(dat)/numpy.sum(map(lambda (s, e):e-s, dat)))
-        thputavg = numpy.average(thputlist)
-        thputmin = numpy.min(thputlist)
-        thputmax = numpy.max(thputlist)
-        thputstd = numpy.std(thputlist)
+            thputlist.append(len(dat)/num.sum(map(lambda (s, e):e-s, dat)))
+        thputavg = num.average(thputlist)
+        thputmin = num.min(thputlist)
+        thputmax = num.max(thputlist)
+        thputstd = num.std(thputlist)
         return thputavg, thputmin, thputmax, thputstd, thputlist
     
     def io_get_data(self, **where):
