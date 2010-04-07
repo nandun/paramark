@@ -2,7 +2,7 @@
 # ParaMark: A Benchmark for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
 # Distributed under GNU General Public Licence version 3
-#n############################################################################
+#############################################################################
 
 #
 # modules/utils.py
@@ -189,8 +189,11 @@ def update_opts_kw(dict, restrict, opts, kw):
 # filesystem utility
 def get_fs_info(path):
     """
-    Get the mountpoint where the path belongs to
+    Get mountpoint where the path belongs to
     """
+    # TODO: more generic way to get fs info
+    # e.g., df
+    mountpoint = None
     if sys.platform == "linux2":
         path = os.path.abspath(path)
         mountpoint = None

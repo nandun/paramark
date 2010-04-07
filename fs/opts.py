@@ -35,6 +35,10 @@ class Options(CommonOptions):
             type="string", dest="report", metavar="PATH", default=None, 
             help="generate report from log directory")
         
+        self.optParser.add_option("-n", "--no-report", action="store_true",
+            dest="noreport", default=False,
+            help="Do NOT report after benchmarking (default: disabled)")
+        
         self.optParser.add_option("-w", "--wdir", action="store", 
             type="string", dest="wdir", metavar="PATH", default=None,
             help="working directory (default: cwd)")
@@ -50,6 +54,10 @@ class Options(CommonOptions):
         self.optParser.add_option("-f", "--force", action="store_false",
             dest="confirm", default=True,
             help="Force to go, do not confirm (default: disabled)")
+        
+        self.optParser.add_option("--html-report", action="store_true",
+            dest="htmlreport", default=False,
+            help="Generate HTML report (default: disabled)")
     
     def load(self):
         CommonOptions.load(self)
@@ -118,10 +126,12 @@ logdir = None
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
+# e.g., meta = [], meta = ["mkdir", "rmdir"]
 meta = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
 "stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
 
 # I/O operations to be performed
+# e.g., io = [], io = ["write"]
 io = ["read", "reread", "write", "rewrite", "fread", "freread", \
 "fwrite", "frewrite", "offsetread", "offsetwrite"]
 

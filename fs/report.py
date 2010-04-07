@@ -29,11 +29,8 @@ import ConfigParser
 import StringIO
 import xml.dom.minidom
 
-import numpy
-
 import version 
 import modules.utils as utils
-import modules.plot as plot
 import modules.DHTML as DHTML
 import bench
 import data
@@ -44,7 +41,6 @@ class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
         self.db = data.Database("%s/fsbench.db" % self.datadir, False)
-        self.pyplot = plot.Pyplot()
         
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
@@ -62,6 +58,12 @@ class Report():
     def __del__(self):
         self.db.close()
 
+    def runtime_stats(self):
+        runtime = {}
+        for k, v in self.db.get_runtimes():
+            runtime[k] = v
+        return runtime
+
     def meta_stats(self):
         res = {}
         for oper in self.db.meta_get_opers():
@@ -78,9 +80,78 @@ class Report():
                 res[oper][host] = self.db.io_stats_by_host(oper, host)
         return res
 
+class TextReport(Report):
+    def __init__(self, datadir):
+        Report.__init__(self, datadir)
+        self.filename = "%s/report.txt" % self.rdir
+    
+    def write(self):
+        self.start = utils.timer2()
+        self.out = open(self.filename, "w")
+        
+        self.db.agg_thread(True)
+        self.db.agg_host(True)
+        self.db.agg_all(True)
+
+        # runtime summary
+        runtime = self.runtime_stats()
+        self.out.write("ParaMark: v%s, %s\n" 
+            % (runtime["version"], runtime["date"]))
+        self.out.write("Platform: %s\n" % runtime["platform"])
+        self.out.write("Target: %s (%s)\n" % (runtime["wdir"],
+            runtime["mountpoint"]))
+        self.out.write("Time: %s --- %s (%.2f seconds)\n" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["start"])))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["end"])))),
+              (eval(runtime["end"]) - eval(runtime["start"]))))
+        self.out.write("User: %s (%s)\n" % (runtime["user"], runtime["uid"]))
+        self.out.write("Command: %s\n" % runtime["cmdline"])
+        self.out.write("Configuration: ./fsbench.conf\n")
+        self.out.write("Data: ./fsbench.db\n") 
+
+        meta_opers = []
+        meta_aggs = []
+        meta_stds = []
+        io_opers = []
+        io_aggs = []
+        io_stds = []
+        for tid,op,optype,thmin,thmax,thavg,thagg,thstd \
+            in self.db.get_stat_all():
+            if optype == OPTYPE_META:
+                meta_opers.append(op)
+                meta_aggs.append(thagg)
+                meta_stds.append(thstd)
+            elif optype == OPTYPE_IO:
+                io_opers.append(op)
+                io_aggs.append(thagg)
+                io_stds.append(thstd)
+            
+        if len(meta_aggs) > 0:
+            meta_aggs = map(lambda x:str(x), meta_aggs)
+            meta_stds = map(lambda x:str(x), meta_stds)
+            self.out.write("\nMetadata Performance (ops/sec)\n")
+            self.out.write("Oper: " + ",".join(meta_opers) + "\n")
+            self.out.write("Aggs: " + ",".join(meta_aggs) + "\n")
+            self.out.write("Stds: " + ",".join(meta_stds) + "\n")
+        
+        if len(io_aggs) > 0:
+            io_aggs = map(lambda x:str(x/1048576), io_aggs)
+            io_stds = map(lambda x:str(x/1048576), io_stds)
+            self.out.write("\nI/O Performance (MB/sec)\n")
+            self.out.write("Oper: " + ",".join(io_opers) + "\n")
+            self.out.write("Aggs: " + ",".join(io_aggs) + "\n")
+            self.out.write("Stds: " + ",".join(io_stds) + "\n")
+        
+        self.out.close()
+        sys.stdout.write("Report generated to %s/report.txt\n" % self.rdir)
+
 class HTMLReport(Report):
     def __init__(self, datadir):
         Report.__init__(self, datadir)
+        import modules.plot as plot
+        self.pyplot = plot.Pyplot()
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()
@@ -148,9 +219,7 @@ class HTMLReport(Report):
         
         # runtime summary
         body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-        runtime = {}
-        for k, v in self.db.get_runtimes():
-            runtime[k] = v
+        runtime = self.runtime_stats()
         rows = []
         rows.append(
             ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
@@ -172,7 +241,6 @@ class HTMLReport(Report):
             doc.HREF("fsbench.db", "../fsbench.db")])
         body.appendChild(doc.table([], rows))
 
-        # metadata summary
         meta_opers = []
         meta_aggs = []
         meta_stds = []
@@ -334,7 +402,6 @@ function showPage(item) {
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
         cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
         cssFile.close()
-        sys.stdout.write("Report generated to %s.\n" % self.rdir)
         
     def write(self):
         self.start = utils.timer2()
@@ -354,6 +421,7 @@ function showPage(item) {
         self.navi_page(metapages, iopages)
         self.css_file()
         self.main_page()
+        sys.stdout.write("Report generated to %s.\n" % self.rdir)
 
 ##########################################################################
 # Default configure string

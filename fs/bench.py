@@ -25,7 +25,6 @@ from modules.utils import *
 from modules.opts import Values
 from const import *
 from data import Database as FSDatabase
-import report
 from modules import gxp
 
 __all__ = []
@@ -63,18 +62,22 @@ class Bench():
         sys.stderr.write(msg)
 
     def report(self, path=None):
-        if self.cfg.dryrun:
+        if self.cfg.dryrun or self.cfg.noreport:
             return
 
         if self.cfg.gxpmode and self.gxp.rank != 0:
             return
         
+        import report
         logdir = self.cfg.logdir
         if self.cfg.report:
             logdir = self.cfg.report
         if path:
             logdir = path
-        self.report = report.HTMLReport(logdir)
+        if self.cfg.htmlreport:
+            self.report = report.HTMLReport(logdir)
+        else:
+            self.report = report.TextReport(logdir)
         self.report.write()
          
     def load(self):
@@ -155,11 +158,13 @@ class Bench():
         self.db.ins_conf('%s/fsbench.conf' % logdir)
 
         if self.cfg.gxpmode:
+            # TODO: rewrite ins_rawdata behavior
+            self.db.ins_rawdata(reslist.pop(0), self.start, True)
             for res in reslist:
-                self.db.ins_rawdata(res, self.start)
+                self.db.ins_rawdata(res, self.start, False)
         else:
             self.db.ins_rawdata([t.get_res() for t in self.threads], 
-                self.start)
+                self.start, True)
         self.db.close()
 
         if self.cfg.verbosity >= 1:
