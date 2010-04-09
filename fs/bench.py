@@ -902,7 +902,6 @@ class offsetread(IOOp):
             i = 0
             while i < opcnt:
                 offset = random.randint(0, self.fsize)
-                assert offset > 0 and offset < self.fsize
                 randwalk.append(offset)
                 i += 1
         elif self.dist[0] == "normal":
