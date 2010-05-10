@@ -12,11 +12,22 @@
 import __builtin__
 import math
 
-HAVE_NUMPY = True
+HAVE_NUMPY = False
 try:
     import numpy
-except:
+    HAVE_NUMPY = True
+except ImportError:
     HAVE_NUMPY = False
+
+def num_average(alist):
+    return sum(alist)/len(alist)
+
+def num_std(alist):
+    avg = num_average(alist)
+    total = 0.0
+    for x in alist:
+        total += math.pow((x-avg), 2)
+    return math.sqrt(total/len(alist))
 
 if HAVE_NUMPY:
     sum = numpy.sum
@@ -31,12 +42,3 @@ else:
     max = __builtin__.max
     std = num_std
 
-def num_average(alist):
-    return sum(alist)/len(alist)
-
-def num_std(alist):
-    avg = num_average(alist)
-    total = 0.0
-    for x in alist:
-        total += math.pow((x-avg), 2)
-    return math.sqrt(total/len(alist))
