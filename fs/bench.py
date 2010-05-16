@@ -20,6 +20,10 @@ import StringIO
 import threading
 from __builtin__ import open as _open # for open()
 
+if not hasattr(os, "SEEK_SET"):
+    os.SEEK_SET = 0
+
+
 import version
 from modules.utils import *
 from modules.opts import Values
