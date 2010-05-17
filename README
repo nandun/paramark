@@ -1,0 +1,6 @@
+Preparation:
+  * Please run ./prepare.sh to install required packages if you are using
+  Debian/Ubuntu Linux
+
+Quick Start:
+  Please refer to http://code.google.com/p/paramark/wiki/Usage
