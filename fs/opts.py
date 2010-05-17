@@ -55,6 +55,10 @@ class Options(CommonOptions):
             dest="confirm", default=True,
             help="Force to go, do not confirm (default: disabled)")
         
+        self.optParser.add_option("--quick-report", action="store_true",
+            dest="quickreport", default=False,
+            help="Generate quick report, does not save any data (default: disabled)")
+        
         self.optParser.add_option("--html-report", action="store_true",
             dest="htmlreport", default=False,
             help="Generate HTML report (default: disabled)")
@@ -68,10 +72,11 @@ class Options(CommonOptions):
                 "stat_exist", "stat_non", "utime", "chmod", "rename", 
                 "unlink"], self.opts.meta])) > 0:
                 _meta.insert(-1, "creat")
+                _meta.insert(-1, "unlink")
             
             for o in self.opts.meta:
                 if o not in _meta:
-                    _meta.insert(-1, o)
+                    _meta.insert(-2, o)
             self.opts.meta = _meta
         
         if len(self.opts.io) > 0:

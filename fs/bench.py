@@ -23,6 +23,7 @@ from __builtin__ import open as _open # for open()
 import version
 from modules.utils import *
 from modules.opts import Values
+from modules import num
 from const import *
 from data import Database as FSDatabase
 from modules import gxp
@@ -61,11 +62,90 @@ class Bench():
     def vs(self, msg):
         sys.stderr.write(msg)
 
+    def quick_report(self):
+        if self.cfg.gxpmode:
+            # Gather results
+            self.send_res()
+            if self.gxp.rank == 0:
+                reslist = []
+                for i in range(0, self.gxp.size):
+                    reslist.extend(self.recv_res())
+            else:
+                return
+        else:
+            reslist = map(lambda t:t.get_res(), self.threads)
+        
+        io_opers = []
+        io_aggs = []
+        meta_opers = []
+        meta_aggs = []
+        elapsed = {}
+        for res in reslist:
+            _, sync_prev_time = res.synctime.pop(0)
+            for sync_name, sync_time in res.synctime:
+                if elapsed.has_key(sync_name):
+                    elapsed[sync_name].append(sync_time - sync_prev_time)
+                else:
+                    elapsed[sync_name] = [sync_time - sync_prev_time]
+                sync_prev_time = sync_time
+        
+        for k in elapsed.keys():
+            if k in FSOP_META:
+                meta_opers.append(k)
+                meta_aggs.append(self.cfg.opcnt / num.average(elapsed[k]))
+            elif k in FSOP_IO:
+                io_opers.append(k)
+                io_aggs.append(self.cfg.fsize / num.average(elapsed[k]))
+        
+        # Write report
+        if self.cfg.logdir is None:  # generate random logdir in cwd
+            self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
+                   (self.runtime.user, time.strftime("%j-%H-%M-%S")))
+        
+        if self.cfg.gxpmode:
+            self.cfg.confirm = False
+        self.cfg.logdir = smart_makedirs(self.cfg.logdir,
+            self.cfg.confirm)
+        
+        f = _open("%s/report.txt" % self.cfg.logdir, "w")
+        f.write("ParaMark: v%s, %s\n" 
+            % (self.runtime.version, self.runtime.date))
+        f.write("Platform: %s\n" % self.runtime.platform)
+        f.write("Target: %s (%s)\n" % (self.runtime.wdir,
+            self.runtime.mountpoint))
+        f.write("Time: %s --- %s (%.2f seconds)\n" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(self.runtime.start)))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(self.runtime.end)))),
+              (eval(self.runtime.end) - eval(self.runtime.start))))
+        f.write("User: %s (%s)\n" % (self.runtime.user, self.runtime.uid))
+        f.write("Command: %s\n" % self.runtime.cmdline)
+
+        meta_aggs = map(lambda x:"%.3f"%x, meta_aggs)
+        io_aggs = map(lambda x:"%.3f"%(x/1048576), io_aggs)
+
+        if len(meta_aggs) > 0:
+            f.write("\nMetadata Performance (ops/sec)\n")
+            f.write("Oper: " + ",".join(meta_opers) + "\n")
+            f.write("Aggs: " + ",".join(meta_aggs) + "\n")
+        if len(io_aggs) > 0:
+            f.write("\nI/O Performance (MB/sec)\n")
+            f.write("Oper: " + ",".join(io_opers) + "\n")
+            f.write("Aggs: " + ",".join(io_aggs) + "\n")
+        
+        f.close() 
+        sys.stdout.write("Report generated to %s/report.txt\n" % self.cfg.logdir)
+        
     def report(self, path=None):
         if self.cfg.dryrun or self.cfg.noreport:
             return
 
         if self.cfg.gxpmode and self.gxp.rank != 0:
+            return
+
+        if self.cfg.quickreport:
+            self.quick_report()
             return
         
         import report
@@ -122,7 +202,7 @@ class Bench():
         self.runtime.end = "%r" % self.end
 
     def save(self):
-        if self.cfg.dryrun:
+        if self.cfg.dryrun or self.cfg.quickreport:
             return
     
         if self.cfg.gxpmode:
