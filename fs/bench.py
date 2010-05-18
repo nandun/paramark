@@ -83,6 +83,7 @@ class Bench():
         meta_opers = []
         meta_aggs = []
         elapsed = {}
+        n_threads = len(reslist)
         for res in reslist:
             _, sync_prev_time = res.synctime.pop(0)
             for sync_name, sync_time in res.synctime:
@@ -95,10 +96,12 @@ class Bench():
         for k in elapsed.keys():
             if k in FSOP_META:
                 meta_opers.append(k)
-                meta_aggs.append(self.cfg.opcnt / num.average(elapsed[k]))
+                meta_aggs.append(self.cfg.opcnt * n_threads 
+                    / num.average(elapsed[k]))
             elif k in FSOP_IO:
                 io_opers.append(k)
-                io_aggs.append(self.cfg.fsize / num.average(elapsed[k]))
+                io_aggs.append(self.cfg.fsize * n_threads 
+                    / num.average(elapsed[k]))
         
         # Write report
         if self.cfg.logdir is None:  # generate random logdir in cwd
@@ -144,11 +147,11 @@ class Bench():
         if self.cfg.dryrun or self.cfg.noreport:
             return
 
-        if self.cfg.gxpmode and self.gxp.rank != 0:
-            return
-
         if self.cfg.quickreport:
             self.quick_report()
+            return
+        
+        if self.cfg.gxpmode and self.gxp.rank != 0:
             return
         
         import report
