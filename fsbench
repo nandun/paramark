@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+#############################################################################
+# ParaMark: A Benchmark for Parallel/Distributed Systems
+# Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
+# Distributed under GNU General Public Licence version 3
+#############################################################################
+
+#
+# fsbench
+# General File System Benchmark
+#
+
+import sys
+import os
+import errno
+
+from modules import gxp
+import fs.opts
+import fs.bench
+
+# Standalone entry
+def standalone_main(fsopt):
+    fsopt.set_usage("[gxpc mw] fsbench [options]")
+    fsopt.load()
+    
+    mybench = fs.bench.Bench(fsopt)
+    if fsopt.opts.report:
+        mybench.report()
+        return 0
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
+    return 0
+
+# GXP entry
+def gxpc_main(fsopt):
+    fsopt.set_usage("gxpc mw fsbench -g [options]")
+    fsopt.load()
+
+    try:
+   	    gxp.set_close_on_exec()
+    except IOError:
+        opt = fs.opts.Options()
+        opt.set_usage("gxpc mw fsbench -g [options]")
+        opt.print_help()
+        return 1
+    
+    mybench = fs.bench.Bench(fsopt)
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
+
+# Main entry
+def main(argv):
+    fsopt = fs.opts.Options(argv)
+    if fsopt.opts.gxpmode:
+        return gxpc_main(fsopt)
+    else:
+        return standalone_main(fsopt)
+    
+    # Should not get here
+    return 1
+    
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
+
+# EOF
