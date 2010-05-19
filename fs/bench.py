@@ -66,42 +66,58 @@ class Bench():
         sys.stderr.write(msg)
 
     def quick_report(self):
+        elapsed = {}
+        for t in self.threads:
+            res = t.get_res()
+            _, sync_prev_time = res.synctime.pop(0)
+            for sync_name, sync_time in res.synctime:
+                if elapsed.has_key(sync_name):
+                    elapsed[sync_name] += sync_time - sync_prev_time
+                else:
+                    elapsed[sync_name] = sync_time - sync_prev_time
+                sync_prev_time = sync_time
+        
         if self.cfg.gxpmode:
             # Gather results
-            self.send_res()
+            # self.send_res()
+                #for k, v in elapsed:
+                #    elapsed[k] = v / len(res.synctime)
+            res = cPickle.dumps(elapsed, 0)
+            self.gxp.wp.write('|'.join(res.split('\n')))
+            self.gxp.wp.write("\n")
+            self.gxp.wp.flush()
             if self.gxp.rank == 0:
                 reslist = []
                 for i in range(0, self.gxp.size):
-                    reslist.extend(self.recv_res())
+                    reslist.append(self.recv_res())
             else:
                 return
         else:
-            reslist = map(lambda t:t.get_res(), self.threads)
-        
+            reslist = [elapsed]
+       
         io_opers = []
         io_aggs = []
         meta_opers = []
         meta_aggs = []
         elapsed = {}
-        n_threads = len(reslist)
+        n_hosts = len(reslist)
         for res in reslist:
-            _, sync_prev_time = res.synctime.pop(0)
-            for sync_name, sync_time in res.synctime:
+            for sync_name, sync_time in res.items():
                 if elapsed.has_key(sync_name):
-                    elapsed[sync_name].append(sync_time - sync_prev_time)
+                    elapsed[sync_name] += sync_time
                 else:
-                    elapsed[sync_name] = [sync_time - sync_prev_time]
-                sync_prev_time = sync_time
-        
+                    elapsed[sync_name] = sync_time
+       
         for k in elapsed.keys():
+            sync_time = elapsed[k] / (self.cfg.nthreads * n_hosts)
             if k in FSOP_META:
                 meta_opers.append(k)
-                meta_aggs.append(self.cfg.opcnt * n_threads 
-                    / num.average(elapsed[k]))
+                meta_aggs.append(self.cfg.opcnt * self.cfg.nthreads 
+                    * n_hosts / sync_time)
             elif k in FSOP_IO:
                 io_opers.append(k)
-                io_aggs.append(self.cfg.fsize * n_threads 
-                    / num.average(elapsed[k]))
+                io_aggs.append(self.cfg.fsize * self.cfg.ntheads * n_hosts
+                    / sync_time)
         
         # Write report
         if self.cfg.logdir is None:  # generate random logdir in cwd
