@@ -116,7 +116,7 @@ class Bench():
                     * n_hosts / sync_time)
             elif k in FSOP_IO:
                 io_opers.append(k)
-                io_aggs.append(self.cfg.fsize * self.cfg.ntheads * n_hosts
+                io_aggs.append(self.cfg.fsize * self.cfg.nthreads * n_hosts
                     / sync_time)
         
         # Write report
