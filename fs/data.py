@@ -1,12 +1,25 @@
 #############################################################################
-# ParaMark: A Benchmark for Parallel/Distributed Systems
+# ParaMark: Benchmarking Suite for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-# Distributed under GNU General Public Licence version 3
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
+
 
 #
 # fs/data.py
-# File System Benchmark Data Persistence and Processing
+# Benchmark Data Persistence and Retrieving
 #
 
 import sqlite3
@@ -14,7 +27,6 @@ import cPickle
 import ConfigParser
 
 from modules import num
-from const import *
 
 class Database:
     """Store/Retrieve benchmark results data"""
@@ -24,9 +36,12 @@ class Database:
         self.FORMATS['runtime'] = [('item','TEXT'), ('value','TEXT')]
         self.FORMATS['conf'] = [('sec','TEXT'), ('opt','TEXT'), 
             ('val', 'TEXT')]
-        self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'), 
-            ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
-            ('data','BLOB'), ('sync','REAL')]
+        #self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'), 
+        #    ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
+        #    ('data','BLOB'), ('sync','REAL')]
+        self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
+            ('tid','INTEGER'), ('para', 'BLOB'), ('proc', 'TEXT'),
+            ('latency', 'BLOB')]
         self.FORMATS['aggdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
             ('min','REAL'), ('max','REAL'), ('avg','REAL'), ('agg','REAL'), 
@@ -116,24 +131,18 @@ class Database:
             for opt, val in cfg.items(sec):
                 self.cur.execute('INSERT INTO %s VALUES (?,?,?)' % table,
                     (sec, opt, val))
-        
+
     def ins_rawdata(self, res, start, overwrite=True):
-        """Save result data to table data
-        runset:
-        pickleValue:
-        start: start time used to normalize data
-        """
-        table = 'data'
-        self.create_table(table, self.FORMATS['rawdata'], overwrite) 
         for r in res:
             sync_prev_name, sync_prev_time = r.synctime.pop(0)
             for o in r.opset:
+                self.create_table(o.name, self.FORMATS['rawdata'], overwrite) 
                 sync_name, sync_time = r.synctime.pop(0)
                 assert sync_name == o.name
-                data = map(lambda (s,e):(s-start,e-start), o.res)
-                self._ins_rawdata(table, (r.hid, r.pid, r.tid, 
-                    o.name, o.type, self._obj2str(data), 
-                    sync_time-sync_prev_time))
+                self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?)" 
+                    % o.name, (r.hid, r.pid, r.tid, 
+                    self._obj2str(o.params), o.proc,
+                    self._obj2str(o.latencies)))
                 sync_prev_name, sync_prev_time = sync_name, sync_time
     
     def _sel(self, one, table, columns, where, group):
