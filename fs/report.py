@@ -18,7 +18,7 @@
 
 #
 # fs/report.py
-# File System Performance Report
+# Performance Report Generation
 #
 
 import sys
@@ -180,9 +180,7 @@ class HTMLReport(Report):
                 self.opts[section][k] = eval(v)
 
         # HTML default settings
-        self.INDEX_FILE = "index.html"
-        self.NAVI_FILE = "navi.html"
-        self.MAIN_FILE = "main.html"
+        self.MAIN_FILE = "report.html"
         self.CSS_FILE = "style.css"
         self.TITLE = "ParaMark Filesytem Benchmarking Report"
         self.TITLE_SIZE = 1
@@ -241,49 +239,12 @@ class HTMLReport(Report):
             doc.HREF("fsbench.db", "../fsbench.db")])
         body.appendChild(doc.table([], rows))
 
-        meta_opers = []
-        meta_aggs = []
-        meta_stds = []
-        io_opers = []
-        io_aggs = []
-        io_stds = []
-        for tid,op,optype,thmin,thmax,thavg,thagg,thstd \
-            in self.db.get_stat_all():
-            if optype == OPTYPE_META:
-                meta_opers.append(op)
-                meta_aggs.append(thagg)
-                meta_stds.append(thstd)
-            elif optype == OPTYPE_IO:
-                io_opers.append(op)
-                io_aggs.append(thagg)
-                io_stds.append(thstd)
-            
-        if len(meta_aggs) > 0:
-            body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
-            figpath = "%s/meta_summary.png" % self.fdir
-            figlink = "figures/meta_summary.png"
-            self.pyplot.bar(figpath, meta_aggs, yerr=meta_stds, 
-                xticks=meta_opers,
-                title="Overall Metadata Performance",
-                xlabel="Metadata Operations",
-                ylabel="Performance (ops/sec)")
-            body.appendChild(doc.HREF(doc.IMG(figlink, 
-               attrs={"class":"demo"}), figlink))
-        
-        if len(io_aggs) > 0:
-            body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-            figpath = "%s/io_summary.png" % self.fdir
-            figlink = "figures/io_summary.png"
-            # TODO: Setup unit from options
-            io_aggs = map(lambda x:x/1048576, io_aggs)
-            io_stds = map(lambda x:x/1048576, io_stds)
-            self.pyplot.bar(figpath, io_aggs, yerr=io_stds, 
-                xticks=io_opers,
-                title="Overall I/O Performance",
-                xlabel="I/O Operations",
-                ylabel="Performance (MB/sec)")
-            body.appendChild(doc.HREF(doc.IMG(figlink, 
-               attrs={"class":"demo"}), figlink))
+        # I/O Section
+        body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write"))
+        tHead = [["fsize/elapsed","Avg"]]
+        rows = []
+        body.appendChild(doc.table(tHead, rows))
 
         # footnote
         self.end = utils.timer2()
@@ -406,10 +367,11 @@ function showPage(item) {
     def write(self):
         self.start = utils.timer2()
         
+        """
         self.db.agg_thread(True)
         self.db.agg_host(True)
         self.db.agg_all(True)
-
+        
         metapages = []
         iopages = []
         for oper in self.db.get_opers():
@@ -419,6 +381,7 @@ function showPage(item) {
                 iopages.append((oper, self.oper_page(oper)))
         self.index_page()
         self.navi_page(metapages, iopages)
+        """
         self.css_file()
         self.main_page()
         sys.stdout.write("Report generated to %s.\n" % self.rdir)
@@ -448,20 +411,24 @@ imageformat = 'png'
 #   Firefox: NODE[class=value]
 PARAMARK_DEFAULT_CSS_STYLE_STRING = """\
 H1 {
-font-family: Arial;
+font-size: 14pt;
 }
 
 H2 {
-font-family: Arial;
-background-color: #41a317;
+font-size: 12pt;
+background-color: #99c68e;
+}
+
+H3 {
+font-size: 12pt;
 }
 
 P[class=footnote] {
 font-family: Times New Roman;
-font-size: 12pt;
+font-size: 10pt;
 font-style: italic;
 display: block;
-background-color: #99c68e;
+background-color: #C3FDB8;
 }
 
 IMG[class=thumbnail] {
@@ -484,7 +451,7 @@ border-width: 0px;
 
 TABLE {
 font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-font-size: 16px;
+font-size: 12px;
 border-collapse: collapse;
 text-align: left;
 width: 100%;
