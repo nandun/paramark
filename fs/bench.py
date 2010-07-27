@@ -1,7 +1,19 @@
 #############################################################################
-# ParaMark: A Benchmark for Parallel/Distributed Systems
+# ParaMark: Benchmarking Suite for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-# Distributed under GNU General Public Licence version 3
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
 # fs/bench.py
@@ -27,9 +39,10 @@ import version
 from modules.utils import *
 from modules.opts import Values
 from modules import num
-from const import *
-from data import Database as FSDatabase
 from modules import gxp
+from const import *
+import ops
+from data import Database as FSDatabase
 
 __all__ = []
 
@@ -241,7 +254,6 @@ class Bench():
         self.db.ins_conf('%s/fsbench.conf' % logdir)
 
         if self.cfg.gxpmode:
-            # TODO: rewrite ins_rawdata behavior
             self.db.ins_rawdata(reslist.pop(0), self.start, True)
             for res in reslist:
                 self.db.ins_rawdata(res, self.start, False)
@@ -314,10 +326,14 @@ class BenchThread(threading.Thread):
 
         # Configure operations
         for o in self.cfg.meta + self.cfg.io:
-            ostr = "%s(files=self.load.%s, " \
-                "verbose=%s, dryrun=%s, **self.cfg.%s.get_kws())" \
-                % (o, o, self.cfg.verbose, self.cfg.dryrun, o)
-            op = eval(ostr)
+            if o == "write":
+                op = ops.write(self.load.write, 
+                    fsize=self.cfg.write.fsize,
+                    bsize=self.cfg.write.bsize,
+                    flags=self.cfg.write.flags,
+                    mode=self.cfg.write.mode,
+                    fsync=self.cfg.write.fsync,
+                    dryrun=self.cfg.dryrun)
             self.opset.append(op)
 
     def _meta_load(self):
@@ -356,7 +372,7 @@ class BenchThread(threading.Thread):
         self.barrier()
         
         for op in self.opset:
-            op.execute()
+            op.exe()
             self.barrier(op.name)
         
         if not self.cfg.dryrun:
@@ -390,7 +406,7 @@ class BenchThread(threading.Thread):
             v = Values()
             v.name = o.name
             v.type = o.type
-            v.res = o.res
+            v.params, v.proc, v.latencies = o.get()
             val.opset.append(v)
         return val
 
