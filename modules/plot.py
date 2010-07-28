@@ -49,3 +49,27 @@ class Pyplot:
         F = pyplot.gcf()
         F.set_size_inches((15, 10))
         pyplot.savefig(path)
+
+class GnuPlot:
+    def __init__(self, path):
+        import Gnuplot
+        self.p = Gnuplot.Gnuplot()
+        self.path = path
+    
+    def bar_chart(self, data, name="bar_chart", 
+        title="bar_chart", xlabel="x_label", ylabel="y_label",
+        xmin=None, xmax=None, ymin=None, ymax=None):
+        self.p.reset()
+        self.p.title("bar_chart")
+        self.p("set terminal png")
+        self.p("set output '%s/%s'" % (self.path, name))
+        self.p("set title '%s'" % title)
+        self.p("set xlabel '%s'" % xlabel)
+        self.p("set ylabel '%s'" % ylabel)
+        if xmin is None: xmin = 0
+        if xmax is None: xmax = len(data)
+        self.p("set xrange [%d:%d]" % (xmin, xmax))
+        if ymin is not None and ymax is not None:
+            self.p("set yrange [%d:%d]" % (ymin, ymax))
+        self.p("set data style impulses")
+        self.p.plot(data)

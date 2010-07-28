@@ -32,15 +32,59 @@ import xml.dom.minidom
 import version 
 import modules.utils as utils
 import modules.DHTML as DHTML
+import modules.num as num
 import bench
 import data
 
 from ops import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
+B = 1
+KB = 1024
+MB = 1048576
+GB = 1073741824
+TB = 1099511627776
+
+USECS = 0.000001
+MSECS = 0.001
+SECS = 1
+
+def unit_str(size, suffix="", rnd=4):
+    """
+    Given the size in bytes, return a string with unit.
+    """
+    if size < KB: unit = "B"
+    elif size < MB: unit = "KB"
+    elif size < GB: unit = "MB"
+    elif size < TB: unit = "GB"
+    else: unit = "TB"
+    return "%s %s%s" % (round(float(size)/eval(unit), rnd), unit, suffix)
+
+def unit_size(size):
+    """
+    Given the size in bytes, 
+    return the unit where the range of value falls in.
+    """
+    if size < KB: unit = "B"
+    elif size < MB: unit = "KB"
+    elif size < GB: unit = "MB"
+    elif size < TB: unit = "GB"
+    else: unit = "TB"
+    return unit, eval(unit)
+
+def unit_time(secs):
+    """
+    Given the size in seconds
+    return the unit where the range of value falls in.
+    """
+    if secs > SECS: unit = "SECS"
+    elif secs < MSECS: unit = "MSECS"
+    else: unit = "USECS"
+    return unit.lower(), eval(unit)
+
 class Report():
     def __init__(self, datadir):
         self.datadir = os.path.abspath(datadir)
-        self.db = data.Database("%s/fsbench.db" % self.datadir, False)
+        self.db = data.Database("%s/fsbench.db" % self.datadir)
         
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
@@ -152,6 +196,7 @@ class HTMLReport(Report):
         Report.__init__(self, datadir)
         import modules.plot as plot
         self.pyplot = plot.Pyplot()
+        self.gplot = plot.GnuPlot(self.fdir)
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()
@@ -241,10 +286,51 @@ class HTMLReport(Report):
 
         # I/O Section
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write Throughput"))
-        tHead = [["Agg", "OpAvg", "OpMin", "OpMax", "OpStd", "OpDist",
-            "LatencyDist",]]
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write"))
+        tHead = [["fsize", "bsize", "agg", "agg w/o close()",
+            "opAvg", "opMin", "opMax", "opStd", "opDist", "elasped"]]
         rows = []
+        unit_suffix = "/sec"
+        for hid,pid,tid,fsize,bsize,elapsed,agg,aggnoclose,opavg,opmin, \
+            opmax,opstd in self.db.select_rawdata_all("write"):
+            # figure generation
+            op_unit, op_unit_val = unit_size(opavg)
+            opdist = map(lambda e:bsize/e/op_unit_val, elapsed[1:-1])
+            figname = "opdist_write_%s_%s_%s_%s_%s.png" % \
+                (hid, pid, tid, fsize, bsize)
+            self.gplot.bar_chart(data=opdist, name=figname,
+                title="Distribution of Per-Operation Throughput",
+                xlabel="write() system call", 
+                ylabel="Throughput (%s/sec)" % op_unit)
+            figlink = "figures/%s" % figname
+            opdist_fighref = doc.HREF(doc.IMG(figlink, 
+                attrs={"class":"thumbnail"}), figlink)
+            
+            elap_unit, elap_unit_val = unit_time(num.average(elapsed))
+            figname = "elapsed_write_%s_%s_%s_%s_%s.png" % \
+                (hid, pid, tid, fsize, bsize)
+            self.gplot.bar_chart(
+                data=map(lambda e:e/elap_unit_val, elapsed), 
+                name=figname,
+                title="Distribution of System Call Latency",
+                xlabel="System call",
+                ylabel="Latency (%s)" % elap_unit)
+            figlink = "figures/%s" % figname
+            elapsed_fighref = doc.HREF(doc.IMG(figlink, 
+                attrs={"class":"thumbnail"}), figlink)
+            
+            # unit conversion 
+            fsize = unit_str(fsize)
+            bsize = unit_str(bsize)
+            agg = unit_str(agg, unit_suffix)
+            aggnoclose = unit_str(aggnoclose, unit_suffix)
+            opavg = unit_str(opavg, unit_suffix)
+            opmin = unit_str(opmin, unit_suffix)
+            opmax = unit_str(opmax, unit_suffix)
+            opstd = unit_str(opstd, unit_suffix)
+
+            rows.append([fsize,bsize,agg,aggnoclose,opavg,opmin,opmax,opstd,
+                opdist_fighref,elapsed_fighref])
         body.appendChild(doc.table(tHead, rows))
 
         # footnote
@@ -457,19 +543,21 @@ TABLE {
 font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
 font-size: 12px;
 border-collapse: collapse;
-text-align: left;
 width: 100%;
 }
 
 TH {
-font-size: 14px;
+font-size: 12px;
 font-weight: bold;
 padding: 6px 8px;
-border-bottom: 2px solid;
+border-bottom: 1px solid;
+vertical-align: baseline;
+text-align: left;
 }
 
 TD {
 padding: 2px 2px;
+text-align: left;
 }
 
 UL[class=navi] {

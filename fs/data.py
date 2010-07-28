@@ -27,10 +27,11 @@ import cPickle
 import ConfigParser
 
 from modules import num
+import oper
 
 class Database:
     """Store/Retrieve benchmark results data"""
-    def __init__(self, dbfile, initTables):
+    def __init__(self, path):
         # Constants
         self.FORMATS = {}
         self.FORMATS['runtime'] = [('item','TEXT'), ('value','TEXT')]
@@ -39,9 +40,15 @@ class Database:
         #self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'), 
         #    ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
         #    ('data','BLOB'), ('sync','REAL')]
-        self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
-            ('tid','INTEGER'), ('para', 'BLOB'), ('proc', 'TEXT'),
-            ('latency', 'BLOB')]
+        self.FORMATS['io'] = [('hid','INTEGER'), ('pid','INTEGER'),
+            ('tid','INTEGER'), ('fsize', 'INTEGER'), ('bsize', 'INTEGER'),
+            ('elapsed', 'BLOB'), ('agg', 'REAL'), ('aggnoclose', 'REAL'),
+            ('opavg', 'REAL'), ('opmin', 'REAL'), ('opmax', 'REAL'),
+            ('opstd', 'REAL')]
+        self.FORMATS['meta'] = [('hid','INTEGER'), ('pid','INTEGER'),
+            ('tid','INTEGER'), ('count', 'INTEGER'), ('factor', 'INTEGER'),
+            ('elapsed', 'BLOB'), ('agg', 'REAL'), ('opavg', 'REAL'),
+            ('opmin', 'REAL'), ('opmax', 'REAL')]
         self.FORMATS['aggdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
             ('min','REAL'), ('max','REAL'), ('avg','REAL'), ('agg','REAL'), 
@@ -50,9 +57,11 @@ class Database:
         self.FORMATS_LEN = {}
         for k, v in self.FORMATS.items():
             self.FORMATS_LEN[k] = len(self.FORMATS[k])
-
-        self.dbfile = dbfile
-        self.db = sqlite3.connect(dbfile)
+        
+        sqlite3.register_converter("BLOB", lambda s:cPickle.loads(str(s)))
+        sqlite3.register_adapter(list, cPickle.dumps)
+        sqlite3.register_adapter(dict, cPickle.dumps)
+        self.db = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.cur = self.db.cursor()
         self.tables = []    # all tables in database
 
@@ -75,9 +84,11 @@ class Database:
         name: table name
         format: a list describe the field and its type
         drop: True/False"""
-
         if drop:
             self.cur.execute("DROP TABLE IF EXISTS %s" % name)
+        elif name in self.tables:
+            return
+        
         formatstr =", ".join(["%s %s" % item for item in format]) 
         self.cur.execute("CREATE TABLE IF NOT EXISTS %s (%s)" 
             % (name, formatstr))
@@ -89,27 +100,14 @@ class Database:
         for table in tables:
             self.cur.execute("DROP TABLE IF EXISTS %s" % table)
             
-    # Pickle
-    def _obj2str(self, obj):
-        return cPickle.dumps(obj)
-    
-    def _str2obj(self, objs):
-        return cPickle.loads(str(objs))
-
     # Data Tables
-    def _ins_rawdata(self, table, data):
-        """Insert data to table in rawdata format"""
-        assert len(data) == self.FORMATS_LEN['rawdata']
-        self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?,?)" 
-            % table, data)
-    
     def _ins_aggdata(self, table, data):
         """Insert data to table in aggdata format"""
         assert len(data) == self.FORMATS_LEN['aggdata']
         self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?)" 
             % table, data)
         
-    def ins_runtime(self, runtimes, pickleValue=True, overwrite=True):
+    def ins_runtime(self, runtimes, overwrite=True):
         """Save runtime variables into table runtime
         runtimes: dictionary of runtime key and values
         pickleValue: whether convert object to string
@@ -117,8 +115,6 @@ class Database:
         table = 'runtime'
         self.create_table(table, self.FORMATS[table], overwrite) 
         for k, v in runtimes.items():
-            if pickleValue:
-                v = self._obj2str(v)
             self.cur.execute("INSERT INTO %s VALUES (?,?)" % table, (k, v))
         self.db.commit()
 
@@ -132,7 +128,42 @@ class Database:
                 self.cur.execute('INSERT INTO %s VALUES (?,?,?)' % table,
                     (sec, opt, val))
 
-    def ins_rawdata(self, res, start, overwrite=True):
+    def insert_rawdata(self, res, overwrite=True):
+        """
+        Insert raw data for the series of operation in each *thread*
+        """
+        for o in res.opset:
+            if oper.optype(o["name"]) == oper.TYPE_META:
+                continue
+            elif oper.optype(o["name"]) == oper.TYPE_IO:
+                # Aggregated throughput
+                total_elapsed = num.sum(o["elapsed"])
+                agg = o["fsize"] / total_elapsed # KB/sec
+                aggnoclose = o["fsize"] / (total_elapsed - o["elapsed"][-1])
+
+                # Per-operation throughput
+                tlist = map(lambda e:o["bsize"]/e, o["elapsed"][1:-1])
+                opavg = num.average(tlist)
+                opmin = num.min(tlist)
+                opmax = num.max(tlist)
+                opstd = num.std(tlist)
+
+                self.create_table(o["name"], self.FORMATS['io'], overwrite)
+                self.cur.execute(
+                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+                    % o["name"], (res.hid, res.pid, res.tid, o["fsize"], 
+                      o["bsize"], o["elapsed"],
+                      agg, aggnoclose, opavg, opmin, opmax, opstd))
+
+    def select_rawdata_all(self, table):
+        self.cur.execute("SELECT * FROM %s" % table)
+        return self.cur.fetchall()
+    
+    def select_rawdata_cols(self, table, cols):
+        self.cur.execute("SELECT %s FROM %s" % (cols, table))
+        return self.cur.fetchall()
+
+    def ins_rawdata(self, res, overwrite=True):
         for r in res:
             sync_prev_name, sync_prev_time = r.synctime.pop(0)
             for o in r.opset:
@@ -173,7 +204,7 @@ class Database:
 
     def get_runtimes(self):
         self.cur.execute('SELECT item,value FROM runtime')
-        return map(lambda (k,v):(k,self._str2obj(v)), self.cur.fetchall())
+        return self.cur.fetchall()
     
     def get_hosts(self):
         self.cur.execute('SELECT hostid FROM data GROUP BY hostid')

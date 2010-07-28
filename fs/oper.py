@@ -43,14 +43,17 @@ DEFAULT_BLKSIZE=1024
 VERBOSE_DEBUG = 1
 VERBOSE_DETAIL = 2
 
-# I/O Primitives
+# Utilities
+def optype(opname):
+    if opname in OPS_META: return TYPE_META
+    elif opname in OPS_IO: return TYPE_IO
 
+# I/O Primitives
 class write():
     def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE, 
         flags=os.O_CREAT | os.O_RDWR, mode=stat.S_IRUSR | stat.S_IWUSR,
         fsync=False, dryrun=False):
         self.name = "write"
-        self.type = TYPE_IO
         self.f = f
         self.fsize = fsize
         self.bsize = bsize
@@ -108,7 +111,7 @@ class write():
 
     def get(self):
         out = {}
-        out["oper"] = "write"
+        out["name"] = "write"
         out["file"] = self.f
         out["fsize"] = self.fsize
         out["bsize"] = self.bsize
