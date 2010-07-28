@@ -15,7 +15,6 @@ import stat
 
 from modules.opts import Options as CommonOptions
 from modules.utils import *
-from const import FSOP_META, FSOP_IO
 
 class Options(CommonOptions):
     """

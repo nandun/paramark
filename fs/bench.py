@@ -40,8 +40,7 @@ from modules.utils import *
 from modules.opts import Values
 from modules import num
 from modules import gxp
-from const import *
-import ops
+import oper
 from data import Database as FSDatabase
 
 __all__ = []
@@ -123,11 +122,11 @@ class Bench():
        
         for k in elapsed.keys():
             sync_time = elapsed[k] / (self.cfg.nthreads * n_hosts)
-            if k in FSOP_META:
+            if k in OPS_META:
                 meta_opers.append(k)
                 meta_aggs.append(self.cfg.opcnt * self.cfg.nthreads 
                     * n_hosts / sync_time)
-            elif k in FSOP_IO:
+            elif k in oper.OPS_IO:
                 io_opers.append(k)
                 io_aggs.append(self.cfg.fsize * self.cfg.nthreads * n_hosts
                     / sync_time)
@@ -382,7 +381,7 @@ class BenchThread(threading.Thread):
         self.load.io_file = \
             "%s/io-%d.file" % (self.load.rdir, random.randint(0,999))
         
-        for o in FSOP_IO:
+        for o in ops.OPS_IO:
             self.load.set_value(o, self.load.io_file)
         
     def run(self):
@@ -425,7 +424,7 @@ class BenchThread(threading.Thread):
             v = Values()
             v.name = o.name
             v.type = o.type
-            v.params, v.proc, v.latencies = o.get()
+            v.res = o.get()
             val.opset.append(v)
         return val
 
