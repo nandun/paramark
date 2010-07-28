@@ -35,7 +35,7 @@ import modules.DHTML as DHTML
 import bench
 import data
 
-from bench import OPTYPE_META, OPTYPE_IO, FSOP_META, FSOP_IO
+from ops import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
 class Report():
     def __init__(self, datadir):
@@ -119,11 +119,11 @@ class TextReport(Report):
         io_stds = []
         for tid,op,optype,thmin,thmax,thavg,thagg,thstd \
             in self.db.get_stat_all():
-            if optype == OPTYPE_META:
+            if optype == TYPE_META:
                 meta_opers.append(op)
                 meta_aggs.append(thagg)
                 meta_stds.append(thstd)
-            elif optype == OPTYPE_IO:
+            elif optype == TYPE_IO:
                 io_opers.append(op)
                 io_aggs.append(thagg)
                 io_stds.append(thstd)
@@ -241,8 +241,9 @@ class HTMLReport(Report):
 
         # I/O Section
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write"))
-        tHead = [["fsize/elapsed","Avg"]]
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write Throughput"))
+        tHead = [["Agg", "OpAvg", "OpMin", "OpMax", "OpStd", "OpDist",
+            "LatencyDist",]]
         rows = []
         body.appendChild(doc.table(tHead, rows))
 
@@ -411,15 +412,18 @@ imageformat = 'png'
 #   Firefox: NODE[class=value]
 PARAMARK_DEFAULT_CSS_STYLE_STRING = """\
 H1 {
+font-family: Arial;
 font-size: 14pt;
 }
 
 H2 {
+font-family: Arial;
 font-size: 12pt;
 background-color: #99c68e;
 }
 
 H3 {
+font-family: Arial;
 font-size: 12pt;
 }
 

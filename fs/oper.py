@@ -60,7 +60,7 @@ class write():
         self.dryrun = dryrun
         
         self.opcnt = 0
-        self.latencies = []
+        self.elapsed = []
 
     def exe(self):
         """
@@ -85,12 +85,12 @@ class write():
             (self.f, self.flags, self.mode), VERBOSE_DEBUG)
         s = timer()
         fd = os.open(self.f, self.flags, self.mode)
-        self.latencies.append(timer() - s)
+        self.elapsed.append(timer() - s)
 
         while cnt > 0:
             s = timer()
             res = os.write(fd, blk)
-            self.latencies.append(timer() - s)
+            self.elapsed.append(timer() - s)
             if res != self.bsize:
                 vbs.warning("written bytes (%d) != bsize (%d)"
                     % (res, self.bsize))
@@ -99,33 +99,26 @@ class write():
         if self.fsync:
             s = timer()
             os.fsync(fd)
-            self.latencies.append(timer() - s)
+            self.elapsed.append(timer() - s)
         
         vbs.verbose("write: os.close(%d)" % fd, VERBOSE_DEBUG)
         s = timer()
         os.close(fd)
-        self.latencies.append(timer() - s)
+        self.elapsed.append(timer() - s)
 
     def get(self):
-        """
-        Get tuple of execution results
-          * parameters of execution
-          * description of current operation execution procedure
-          * list of latencies of every operation
-        """
-        params = []
-        params.append(("op", "write"))
-        params.append(("file", "%s" % self.f))
-        params.append(("fsize", "%d" % self.fsize))
-        params.append(("bsize", "%d" % self.bsize))
-        params.append(("flags", "%d" % self.flags))
-        params.append(("mode", "%d" % self.mode))
-        params.append(("fsync", "%s" % self.fsync))
-
-        proc = "fd = open(%s, %d, %d) -> write(fd, %d) * %d" \
+        out = {}
+        out["oper"] = "write"
+        out["file"] = self.f
+        out["fsize"] = self.fsize
+        out["bsize"] = self.bsize
+        out["flags"] = self.flags
+        out["mode"] = self.mode
+        out["fsync"] = self.fsync
+        desc = "fd = open(%s, %d, %d) -> write(fd, %d) * %d" \
             % (self.f, self.flags, self.mode, self.bsize, self.opcnt)
-        if self.fsync:
-            proc += " -> fsync(fd)"
-        proc += " -> close(fd)"
-
-        return params, proc, self.latencies
+        if self.fsync: desc += " -> fsync(fd)"
+        desc += " -> close(fd)"
+        out["desc"] = desc
+        out["elapsed"] = self.elapsed
+        return out
