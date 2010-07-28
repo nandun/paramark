@@ -63,7 +63,6 @@ class Bench():
         self.runtime.hostname = socket.gethostname()
         self.runtime.platform = " ".join(os.uname())
         self.runtime.cmdline = " ".join(sys.argv)
-        self.runtime.environ = copy.deepcopy(os.environ)
         self.runtime.mountpoint = get_fs_info(self.cfg.wdir)
         self.runtime.wdir = self.cfg.wdir
         # May be set later in GXP mode
@@ -267,7 +266,7 @@ class Bench():
                 % logdir)
         
         # Save results
-        self.db = FSDatabase("%s/fsbench.db" % logdir, True)
+        self.db = FSDatabase("%s/fsbench.db" % logdir)
         self.db.ins_runtime(self.runtime)
         self.db.ins_conf('%s/fsbench.conf' % logdir)
 
@@ -276,8 +275,8 @@ class Bench():
             for res in reslist:
                 self.db.ins_rawdata(res, self.start, False)
         else:
-            self.db.ins_rawdata([t.get_res() for t in self.threads], 
-                self.start, True)
+            for t in self.threads:
+                self.db.insert_rawdata(t.get_res(), True)
         self.db.close()
 
         if self.cfg.verbosity >= 1:
@@ -345,7 +344,7 @@ class BenchThread(threading.Thread):
         # Configure operations
         for o in self.cfg.meta + self.cfg.io:
             if o == "write":
-                op = ops.write(self.load.write, 
+                op = oper.write(self.load.write, 
                     fsize=self.cfg.write.fsize,
                     bsize=self.cfg.write.bsize,
                     flags=self.cfg.write.flags,
@@ -381,7 +380,7 @@ class BenchThread(threading.Thread):
         self.load.io_file = \
             "%s/io-%d.file" % (self.load.rdir, random.randint(0,999))
         
-        for o in ops.OPS_IO:
+        for o in oper.OPS_IO:
             self.load.set_value(o, self.load.io_file)
         
     def run(self):
@@ -419,13 +418,7 @@ class BenchThread(threading.Thread):
         val.pid = self.cfg.pid
         val.tid = self.cfg.tid
         val.synctime = self.synctime
-        val.opset = []
-        for o in self.opset:
-            v = Values()
-            v.name = o.name
-            v.type = o.type
-            v.res = o.get()
-            val.opset.append(v)
+        val.opset = [o.get() for o in self.opset]
         return val
 
 __all__.append("BenchThread")
