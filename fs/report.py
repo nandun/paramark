@@ -48,7 +48,7 @@ USECS = 0.000001
 MSECS = 0.001
 SECS = 1
 
-def unit_str(size, suffix="", rnd=4):
+def unit_str(size, suffix="", rnd=3):
     """
     Given the size in bytes, return a string with unit.
     """
@@ -522,7 +522,7 @@ background-color: #C3FDB8;
 }
 
 IMG[class=thumbnail] {
-border-style: outset;
+border-style: groove;
 border-width: 1px;
 width: 20px;
 height: 20px;

@@ -273,10 +273,10 @@ class Bench():
         if self.cfg.gxpmode:
             self.db.ins_rawdata(reslist.pop(0), self.start, True)
             for res in reslist:
-                self.db.ins_rawdata(res, self.start, False)
+                self.db.ins_rawdata(res, self.start)
         else:
             for t in self.threads:
-                self.db.insert_rawdata(t.get_res(), True)
+                self.db.insert_rawdata(t.get_res())
         self.db.close()
 
         if self.cfg.verbosity >= 1:
@@ -344,14 +344,16 @@ class BenchThread(threading.Thread):
         # Configure operations
         for o in self.cfg.meta + self.cfg.io:
             if o == "write":
-                op = oper.write(self.load.write, 
-                    fsize=self.cfg.write.fsize,
-                    bsize=self.cfg.write.bsize,
-                    flags=self.cfg.write.flags,
-                    mode=self.cfg.write.mode,
-                    fsync=self.cfg.write.fsync,
-                    dryrun=self.cfg.dryrun)
-            self.opset.append(op)
+                for fs in self.cfg.write.fsize:
+                    for bs in self.cfg.write.bsize:
+                        op = oper.write(
+                            f="%s-%d-%d" % (self.load.write, fs, bs), 
+                            fsize=fs, bsize=bs,
+                            flags=self.cfg.write.flags,
+                            mode=self.cfg.write.mode,
+                            fsync=self.cfg.write.fsync,
+                            dryrun=self.cfg.dryrun)
+                        self.opset.append(op)
 
     def _meta_load(self):
         self.load.meta_dirs = []
