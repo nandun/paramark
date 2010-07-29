@@ -23,6 +23,8 @@
 
 import sys
 
+__all__ = ["message", "warning"]
+
 class Verbose():
     def __init__(self):
         self.level = 0
@@ -40,3 +42,11 @@ class Verbose():
         sys.stderr.write("%s\n" % s)
 
 vbs = Verbose()
+
+def message(s):
+    sys.stdout.write("%s\n" % s)
+    sys.stdout.flush()
+
+def warning(s):
+    sys.stdout.write("Warning: %s\n" % s)
+    sys.stdout.flush()

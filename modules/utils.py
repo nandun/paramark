@@ -28,6 +28,8 @@ import errno
 import time
 import math
 
+from verbose import *
+
 INTEGER_MAX = sys.maxint
 INTEGER_MIN = -sys.maxint -1
 
@@ -92,8 +94,7 @@ def smart_makedirs(path, confirm=True):
     try: os.makedirs(path)
     except OSError, err:
         if err.errno == errno.EEXIST:
-            sys.stderr.write("warning: directory %s exists\n" 
-                % os.path.abspath(path))
+            warning("directory \"%s\" exists" % os.path.abspath(path))
             if confirm:
                 ans = raw_input("Overwrite [Y/n/path]? ").lower()
                 if ans == 'n':
@@ -102,8 +103,7 @@ def smart_makedirs(path, confirm=True):
                 elif ans == "" or ans == 'y': pass
                 else: return smart_makedirs(ans, confirm)
             else:
-                sys.stderr.write("overwriting %s ...\n"
-                    % os.path.abspath(path))
+                message("Overwriting \"%s\" ..." % os.path.abspath(path))
         else:
             sys.stderr.write("failed to create %s, %s\n" % \
                 (path, os.strerror(err.errno)))
