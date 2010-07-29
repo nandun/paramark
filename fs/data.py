@@ -84,10 +84,9 @@ class Database:
         name: table name
         format: a list describe the field and its type
         drop: True/False"""
-        if drop:
-            self.cur.execute("DROP TABLE IF EXISTS %s" % name)
-        elif name in self.tables:
-            return
+        if drop: self.cur.execute("DROP TABLE IF EXISTS %s" % name)
+        
+        if name in self.tables: return
         
         formatstr =", ".join(["%s %s" % item for item in format]) 
         self.cur.execute("CREATE TABLE IF NOT EXISTS %s (%s)" 
@@ -128,7 +127,7 @@ class Database:
                 self.cur.execute('INSERT INTO %s VALUES (?,?,?)' % table,
                     (sec, opt, val))
 
-    def insert_rawdata(self, res, overwrite=True):
+    def insert_rawdata(self, res, overwrite=False):
         """
         Insert raw data for the series of operation in each *thread*
         """
