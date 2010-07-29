@@ -56,20 +56,23 @@ class GnuPlot:
         self.p = Gnuplot.Gnuplot()
         self.path = path
     
-    def bar_chart(self, data, name="bar_chart", 
-        title="bar_chart", xlabel="x_label", ylabel="y_label",
-        xmin=None, xmax=None, ymin=None, ymax=None):
+    def impulse_chart(self, data, name="bar_chart", 
+        title="impulse_chart", xlabel="x_label", ylabel="y_label",
+        xmin=None, xmax=None, ymin=None, ymax=None,
+        xlog=False, ylog=False):
         self.p.reset()
-        self.p.title("bar_chart")
         self.p("set terminal png")
         self.p("set output '%s/%s'" % (self.path, name))
-        self.p("set title '%s'" % title)
+        self.p.title(title)
         self.p("set xlabel '%s'" % xlabel)
         self.p("set ylabel '%s'" % ylabel)
+        if xlog: self.p("set logscale x")
+        if ylog: self.p("set logscale y")
         if xmin is None: xmin = 0
         if xmax is None: xmax = len(data)
-        self.p("set xrange [%d:%d]" % (xmin, xmax))
-        if ymin is not None and ymax is not None:
+        # let gnuplot decide range when log scale is set
+        if not xlog: self.p("set xrange [%d:%d]" % (xmin, xmax))
+        if ymin is not None and ymax is not None and not ylog:
             self.p("set yrange [%d:%d]" % (ymin, ymax))
         self.p("set data style impulses")
         self.p.plot(data)

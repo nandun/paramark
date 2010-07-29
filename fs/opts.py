@@ -58,9 +58,9 @@ class Options(CommonOptions):
             dest="quickreport", default=False,
             help="Generate quick report, does not save any data (default: disabled)")
         
-        self.optParser.add_option("--html-report", action="store_true",
-            dest="htmlreport", default=False,
-            help="Generate HTML report (default: disabled)")
+        self.optParser.add_option("--text-report", action="store_true",
+            dest="textreport", default=False,
+            help="Generate text report (default: disabled)")
     
     def load(self):
         CommonOptions.load(self)

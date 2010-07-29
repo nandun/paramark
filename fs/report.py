@@ -30,13 +30,14 @@ import StringIO
 import xml.dom.minidom
 
 import version 
+from modules.verbose import *
 import modules.utils as utils
 import modules.DHTML as DHTML
 import modules.num as num
 import bench
 import data
 
-from ops import TYPE_META, TYPE_IO, OPS_META, OPS_IO
+from oper import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
 B = 1
 KB = 1024
@@ -44,9 +45,11 @@ MB = 1048576
 GB = 1073741824
 TB = 1099511627776
 
-USECS = 0.000001
-MSECS = 0.001
+USECS = 1e-06
+MSECS = 1e-03
 SECS = 1
+
+LOGSCALE_THRESHOLD = 1000
 
 def unit_str(size, suffix="", rnd=3):
     """
@@ -77,7 +80,7 @@ def unit_time(secs):
     return the unit where the range of value falls in.
     """
     if secs > SECS: unit = "SECS"
-    elif secs < MSECS: unit = "MSECS"
+    elif secs / MSECS > MSECS: unit = "MSECS"
     else: unit = "USECS"
     return unit.lower(), eval(unit)
 
@@ -298,7 +301,7 @@ class HTMLReport(Report):
             opdist = map(lambda e:bsize/e/op_unit_val, elapsed[1:-1])
             figname = "opdist_write_%s_%s_%s_%s_%s.png" % \
                 (hid, pid, tid, fsize, bsize)
-            self.gplot.bar_chart(data=opdist, name=figname,
+            self.gplot.impulse_chart(data=opdist, name=figname,
                 title="Distribution of Per-Operation Throughput",
                 xlabel="write() system call", 
                 ylabel="Throughput (%s/sec)" % op_unit)
@@ -307,14 +310,18 @@ class HTMLReport(Report):
                 attrs={"class":"thumbnail"}), figlink)
             
             elap_unit, elap_unit_val = unit_time(num.average(elapsed))
+            ylog = False
+            if num.max(elapsed) / num.min(elapsed) > LOGSCALE_THRESHOLD:
+                ylog = True
             figname = "elapsed_write_%s_%s_%s_%s_%s.png" % \
                 (hid, pid, tid, fsize, bsize)
-            self.gplot.bar_chart(
+            self.gplot.impulse_chart(
                 data=map(lambda e:e/elap_unit_val, elapsed), 
                 name=figname,
                 title="Distribution of System Call Latency",
                 xlabel="System call",
-                ylabel="Latency (%s)" % elap_unit)
+                ylabel="Latency (%s)" % elap_unit,
+                ylog=ylog)
             figlink = "figures/%s" % figname
             elapsed_fighref = doc.HREF(doc.IMG(figlink, 
                 attrs={"class":"thumbnail"}), figlink)
@@ -471,7 +478,7 @@ function showPage(item) {
         """
         self.css_file()
         self.main_page()
-        sys.stdout.write("Report generated to %s.\n" % self.rdir)
+        message("Report generated in %s" % self.rdir)
 
 ##########################################################################
 # Default configure string

@@ -36,6 +36,7 @@ if not hasattr(os, "SEEK_SET"):
     os.SEEK_SET = 0
 
 import version
+from modules.verbose import *
 from modules.utils import *
 from modules.opts import Values
 from modules import num
@@ -168,11 +169,13 @@ class Bench():
             f.write("Aggs: " + ",".join(io_aggs) + "\n")
         
         f.close() 
-        sys.stdout.write("Report generated to %s/report.txt\n" % self.cfg.logdir)
+        sys.stdout.write("Report generated in %s/report.txt\n" % self.cfg.logdir)
         
     def report(self, path=None):
         if self.cfg.dryrun or self.cfg.noreport:
             return
+
+        message("Generating report ...")
 
         if self.cfg.quickreport:
             self.quick_report()
@@ -187,10 +190,10 @@ class Bench():
             logdir = self.cfg.report
         if path:
             logdir = path
-        if self.cfg.htmlreport:
-            self.report = report.HTMLReport(logdir)
-        else:
+        if self.cfg.textreport:
             self.report = report.TextReport(logdir)
+        else:
+            self.report = report.HTMLReport(logdir)
         self.report.write()
          
     def load(self):
@@ -218,6 +221,7 @@ class Bench():
             self.threads.append(BenchThread(self.threadsync, cfg))
 
     def run(self):
+        message("Start benchmarking ...")
         self.start = timer()
         
         for t in self.threads:
