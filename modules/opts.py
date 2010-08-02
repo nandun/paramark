@@ -1,42 +1,55 @@
 #############################################################################
-# ParaMark: A Benchmark for Parallel/Distributed Systems
+# ParaMark: Benchmarking Suite for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-# Distributed under GNU General Public Licence version 3
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-#
 # modules/opts.py
-#
+# Base Option and Configure Parser
 
 import sys
 import os
-import stat
 import optparse
 import textwrap
 import ConfigParser
 import StringIO
 
+import verbose as vbs
+from verbose import *
+
+OPTS_VERBOSE_NORMAL = 1
+OPTS_VERBOSE_DEBUG = 5
+
 class Options:
-    """
-    Common options
-    """
     def __init__(self, argv=None):
         self.optParser = optparse.OptionParser(formatter=HelpFormatter())
         self.cfgParser = ConfigParser.ConfigParser()
         self._add_default_options()
         
         # options including command arguments and configuration files
-        self.opts = Values()
+        self.vals = Values()
         self.args = None    # remaining command arguments
         self.DEFAULT_CONFIG_STRING = ""
-        self.DEFAULT_CONF_FILENAME = "paramark_conf"
+        self.DEFAULT_CONF_FILENAME = "paramark.conf"
         self.CONF_GLOBAL_SECTION = "global"
 
         if argv is not None:
             self.parse_argv(argv)
     
     def _add_default_options(self):
-        # Reset help option such that it does not call print_help() callback
+        # Override default help behavior
         self.optParser.remove_option("-h")
         self.optParser.add_option("-h", "--help", action="store_true",
             dest="help", default=False,
@@ -54,6 +67,10 @@ class Options:
             type="string", dest="conf", metavar="PATH", default="",
             help="configuration file")
         
+        self.optParser.add_option("--debug", action="store_true",
+            dest="debug", default=False, 
+            help="debug mode, print debug information (default: disabled)")
+        
         # Options may be set in configuration file
         # default values should be set to None
         self.optParser.add_option("-v", "--verbosity", action="store",
@@ -63,128 +80,129 @@ class Options:
         self.optParser.add_option("-d", "--dryrun", action="store_true",
             dest="dryrun", default=None, 
             help="dry run, do not execute (default: disabled)")
-
-    def _print_opts(self):
-        """
-        Debug
-        """
-        for k, v in self.opts.items():
-            print "debug: opts=%s, val=%s" % (k, v)
         
-    def has_opt(self, opt):
-        return self.opts.has_attr(opt)
+    def _invalid_val(self, opt, val):
+        if opt == "verbosity": return int(val)
+        elif opt == "dryrun": return bool(val)
+        return val
+                
+    def has(self, opt):
+        return hasattr(self.vals, opt)
 
-    def set_val(self, opt, val):
-        """
-        Set value of given option
-        """
-        self.opts.set_value(opt, val)
+    def set(self, opt, val):
+        setattr(self.vals, opt, val)
 
-    def get_val(self, opt):
-        return self.opts.get_value(opt)
+    def get(self, opt):
+        return getattr(self.vals, opt)
 
     def set_subval(self, opt, subval):
-        """
-        Set value of given options from dict/list
-        """
-        self.opts.set_value(opt, Values(subval))
+        self.vals.set(opt, Values(subval))
 
     def set_usage(self, usage):
         self.optParser.set_usage(usage)
 
     def parse_argv(self, argv):
         opts, self.args = self.optParser.parse_args(argv)
-        self.opts.update(opts.__dict__)
-        return self.opts, self.args
+        self.vals.update(opts.__dict__)
 
     def print_help(self):
         self.optParser.print_help()
 
     def print_default_conf(self, filename=None):
-        if filename:
-            try:
-                f = open(filename, "wb")
-            except IOError:
-                sys.stderr.write("failed to open file %s" % filename)
-                sys.exit(1)
-            f.write(self.DEFAULT_CONFIG_STRING)
-            f.close()
-        else:
-            sys.stdout.write(self.DEFAULT_CONFIG_STRING)
+        sys.stdout.write(self.DEFAULT_CONFIG_STRING)
+        sys.stdout.flush()
 
-    def prompt_and_exit(self):
-        """
-        Prompt user and exit if required
-        """
-        if self.opts.help:
-            self.print_help()
-            sys.exit(0)
-        if self.opts.printconf:
-            self.print_default_conf()
-            sys.exit(0)
-    
     def parse_conf(self):
         fp = StringIO.StringIO(self.DEFAULT_CONFIG_STRING)
         self.cfgParser.readfp(fp)
         fp.close()
 
-        try:
-            loaded_files = self.cfgParser.read(
-                [os.path.expanduser("~/%s" % self.DEFAULT_CONF_FILENAME),
-                 os.path.abspath(".%s" % self.DEFAULT_CONF_FILENAME),
-                 os.path.abspath(self.opts.conf)])
-        except:
-            sys.stderr.write("Error, corrupted configuration file\n")
-            sys.exit(1)
+        loaded_files = self.cfgParser.read(
+            [os.path.expanduser("~/%s" % self.DEFAULT_CONF_FILENAME),
+             os.path.abspath(".%s" % self.DEFAULT_CONF_FILENAME),
+             os.path.abspath(self.vals.conf)])
+        
+        if loaded_files is not None:
+            verbose("Successfull load configurations from %s." %
+                    ", ".join(loaded_files), OPTS_VERBOSE_NORMAL)
 
-        if self.opts.verbosity >= 5 and loaded_files is not None:
-            sys.stderr.write("Successfull load configuration from %s.\n" %
-                ", ".join(loaded_files))
+    def override_conf(self):
+        """
+        Override read configurations from command line options
+        """
+        conf_sections = self.cfgParser.sections()
+       
+        # Global section
+        sec = self.CONF_GLOBAL_SECTION
+        for o, v in self.cfgParser.items(sec):
+            if self.has(o):
+                val = self.get(o)
+                if val is None:
+                    # Not set by commad line yet, set by default value
+                    self.set(o, v)
+                else:
+                    # Set by command line, override default value
+                    self.cfgParser.set(sec, o, str(val))
+            else:
+                # Set default value
+                self.set(o, v)
+
+        # Local sections
+        local_secs = list(conf_sections)
+        local_secs.remove(self.CONF_GLOBAL_SECTION)
+        for sec in local_secs:
+            if self.vals.override:
+                for o, v in self.cfgParser.items(sec):
+                    if self.has(o):
+                        verbose("Override %s.%s=%s -> %s" %
+                            (sec, o, v, self.get(o)), OPTS_VERBOSE_DEBUG)
+                        self.cfgParser.set(sec, o, str(self.get(o)))
+            self.set_subval(sec, self.cfgParser.items(sec))
     
     def save_conf(self, filename):
-        """
-        Save current configuration to file
-        """
         fp = open(filename, "wb")
         self.cfgParser.write(fp)
         fp.close()
-        
-    def load(self):
-        self.prompt_and_exit()
-        self.parse_conf()
 
-        # Integrate command options and configurations
-        conf_sections = self.cfgParser.sections()
-        
-        # Global section
-        section = self.CONF_GLOBAL_SECTION
-        for k, v in self.cfgParser.items(section):
-            opt_val = self.get_val(k)
-            if opt_val is None:
-                self.set_val(k, eval(v))
+    def validate_values(self, values=None):
+        if values is None: values = self.vals
+        for o, v in values.items():
+            if isinstance(v, Values):
+                self.validate_values(v)
             else:
-                # Override configuration from command arguments
-                self.cfgParser.set(section, k, opt_val)
+                values.set(o, self._invalid_val(o, v))
+            
+    def load(self):
+        if self.vals.help:
+            self.print_help()
+            sys.exit(0)
+        
+        if self.vals.printconf:
+            self.print_default_conf()
+            sys.exit(0)
+        
+        import verbose
+        verbose.global_verbose_level = self.vals.verbosity
+        
+        self.parse_conf()
+ 
+        self.override_conf()
+        
+        self.validate_values()
+        
+        if self.vals.debug:
+            for k, v in self.vals.items():
+                if isinstance(v, Values):
+                    for sk, sv in v.items():
+                        sys.stdout.write("debug: opt=%s.%s, val=%s, type=%s\n"
+                            % (k, sk, sv, type(sv)))
+                else:
+                    sys.stdout.write("debug: opt=%s, val=%s, type=%s\n" 
+                        % (k, v, type(v)))
+                sys.stdout.flush()
 
-        # Local sections
-        local_sections = list(conf_sections)
-        local_sections.remove(self.CONF_GLOBAL_SECTION)
-        for section in local_sections:
-            if self.opts.override:
-                # Override local options
-                for k, v in self.cfgParser.items(section):
-                    if self.get_val(k) is not None:
-                        self.cfgParser.set(section, k, str(self.get_val(k)))
-            self.set_subval(section, 
-                map(lambda (k, v):(k, eval(v)), self.cfgParser.items(section)))
-
-    def new_values(self, values=None):
-        return Values(values)
 
 class Values:
-    """
-    Option values container
-    """
     def __init__(self, values=None):
         if isinstance(values, list):
             for k, v in values:
@@ -196,20 +214,17 @@ class Values:
     def __str__(self):
         return str(self.__dict__)
 
+    def has(self, item):
+        return hasattr(item)
+
+    def set(self, item, val):
+        setattr(self, item, val)
+
+    def get(self, item, val):
+        return getattr(self, item, val)
+
     def update(self, dict):
         self.__dict__.update(dict)
-
-    def has_attr(self, attr):
-        return self.__dict__.has_key(attr)
-        
-    def set_value(self, attr, val):
-        self.__dict__[attr] = val
-    
-    def get_value(self, attr):
-        if self.__dict__.has_key(attr):
-            return self.__dict__[attr]
-        else:
-            return None
 
     def get_kws(self):
         return self.__dict__

@@ -23,30 +23,25 @@
 
 import sys
 
-__all__ = ["message", "warning"]
+__all__ = ["message", "warning", "verbose", "fatal"]
 
-class Verbose():
-    def __init__(self):
-        self.level = 0
-
-    def verbose(self, s, level=1):
-        if self.level >= level:
-            sys.stdout.write("%s\n" % s)
-            sys.stdout.flush()
-
-    def warning(self, s):
-        sys.stdout.write("%s\n" % s)
-        sys.stdout.flush()
-
-    def error(self, s):
-        sys.stderr.write("%s\n" % s)
-
-vbs = Verbose()
+global_verbose_level = 0
+DEBUG = False
 
 def message(s):
-    sys.stdout.write("%s\n" % s)
     sys.stdout.flush()
+    sys.stdout.write("%s\n" % s)
 
 def warning(s):
-    sys.stdout.write("Warning: %s\n" % s)
     sys.stdout.flush()
+    sys.stdout.write("Warning: %s\n" % s)
+
+def verbose(s, level=0):
+    if global_verbose_level >= level:
+        sys.stdout.flush()
+        sys.stdout.write("%s\n" % s)
+
+def fatal(s, ret=1):
+    sys.stdout.flush()
+    sys.stderr.write("Fatal: %s\n" % s)
+    sys.exit(ret)

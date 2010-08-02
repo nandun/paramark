@@ -16,10 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-#
 # fs/report.py
 # Performance Report Generation
-#
 
 import sys
 import os
@@ -229,7 +227,7 @@ class HTMLReport(Report):
 
         # HTML default settings
         self.MAIN_FILE = "report.html"
-        self.CSS_FILE = "style.css"
+        self.CSS_FILE = "report.css"
         self.TITLE = "ParaMark Filesytem Benchmarking Report"
         self.TITLE_SIZE = 1
         self.SECTION_SIZE = self.TITLE_SIZE + 1
@@ -343,115 +341,20 @@ class HTMLReport(Report):
         # footnote
         self.end = utils.timer2()
         pNode = doc.tag("p", 
-            value="Generated at %s, took %.2f seconds, using "
-            % (time.strftime("%a %b %d %Y %H:%M:%S %Z", self.end[0]),
-              (self.end[1] - self.start[1])),
+            value="Took %.2f seconds, styled by "
+                % ((self.end[1] - self.start[1])),
             attrs={"class":"footnote"})
-        pNode.appendChild(doc.HREF("report.conf", "../report.conf"))
-        pNode.appendChild(doc.TEXT(" by "))
-        pNode.appendChild(doc.HREF("ParaMark", version.PARAMARK_WEB))
-        pNode.appendChild(doc.TEXT(" v%s, %s." 
-            % (version.PARAMARK_VERSION, version.PARAMARK_DATE)))
+        pNode.appendChild(doc.HREF(self.CSS_FILE, "./%s" % self.CSS_FILE))
+        pNode.appendChild(doc.TEXT(", created by "))
+        pNode.appendChild(doc.HREF("ParaMark v%s" % version.PARAMARK_VERSION,
+            version.PARAMARK_WEB))
+        pNode.appendChild(doc.TEXT(" at %s." %
+            time.strftime("%a %b %d %Y %H:%M:%S %Z", self.end[0])))
         body.appendChild(pNode)
         
         htmlFile = open("%s/%s" % (self.rdir, self.MAIN_FILE), "w")
-        doc.write(htmlFile, newl="\n")
+        doc.write(htmlFile)
         htmlFile.close()
-
-    def navi_page(self, metapages, iopages):
-        doc = DHTML.HTMLDocument()
-        head = doc.tag("head")
-        body = doc.tag("body")
-        doc.add(head)
-
-        # insert script
-        scriptTxt = \
-"""
-function showPage(item) {
-    top.content.location = item.getAttribute('ref')
-}
-"""
-        script = doc.tag("script", value=scriptTxt,
-            attrs={"language":"javascript"})
-        head.appendChild(script)
-        link = doc.tag("link", attrs={"href":self.CSS_FILE, 
-            "rel":"stylesheet", "type":"text/css"})
-        head.appendChild(link)
-        doc.add(body)
-
-        items = [("Overview", 
-            {"onClick":"showPage(this)","ref":self.MAIN_FILE}, [])]
-        
-        subitems = []
-        for op, page in metapages:
-            subitems.append((op, {"onClick":"showPage(this)", "ref":page}, []))
-        items.append(("Metadata", {}, subitems))
-        
-        subitems = []
-        for op, page in iopages:
-            subitems.append((op, {"onClick":"showPage(this)", "ref":page}, []))
-        items.append(("Input/Output", {}, subitems))
-        
-        body.appendChild(doc.makeList(items, attrs={"class":"navi"}))
-        htmlFile = open("%s/%s" % (self.rdir, self.NAVI_FILE), "w")
-        doc.write(htmlFile, newl="\n")
-        htmlFile.close()
-
-    def oper_page(self, opname):
-        doc = DHTML.HTMLDocument()
-        head = doc.makeHead(opname)
-        head.appendChild(doc.tag("link", attrs=self.LINK_ATTRS))
-        doc.add(head)
-        
-        body = doc.tag("body")
-        doc.add(body)
-
-        body.appendChild(doc.H(self.TITLE_SIZE, value="%s" % opname))
-        body.appendChild(doc.H(self.SECTION_SIZE, "Comparison among hosts"))
-        
-        tHead = [["host", "agg", "avg", "min", "max", "std", "dist"]]
-        tRows = []
-        avgList = []
-        aggList = []
-        stdList = []
-        hostList = []
-        for hid,tid,optype,thmin,thmax,thavg,thagg,thstd \
-            in self.db.get_stats('data1',
-            ['hostid','tid','optype','min','max','avg','agg','std'], 
-            {'oper':opname}):
-            
-            figpath = "%s/%s_host%s.png" % (self.fdir, opname, hid)
-            figlink = "figures/%s_host%s.png" % (opname, hid)
-            thlist = self.db.get_stats('data0', ['agg'], 
-                {'hostid':hid, 'oper':opname})
-            if optype == OPTYPE_IO:
-                thlist = map(lambda x:x/1048576, thlist)
-                thagg = thagg / 1048576
-                thavg = thavg / 1048576
-                thmin = thmin / 1048576
-                thmax = thmax / 1048576
-                thstd = thstd / 1048576
-            self.pyplot.point(figpath, thlist)
-            figref = doc.HREF(doc.IMG(figlink, attrs={"class":"thumbnail"}), 
-                    figlink)
-            tRows.append([hid, thagg, thavg, thmin, thmax, thstd, figref])
-            avgList.append(thavg)
-            aggList.append(thagg)
-            stdList.append(thstd)
-            hostList.append(hid)
-
-        figpath = "%s/%s_host_cmp.png" % (self.fdir, opname)
-        figlink = "figures/%s_host_cmp.png" % opname
-        self.pyplot.bar(figpath, aggList, yerr=stdList, xticks=hostList)
-        body.appendChild(doc.HREF(doc.IMG(figlink, attrs={"class":"demo"}),
-            figlink))
-        body.appendChild(doc.table(tHead, tRows, attrs={"class":"data"}))
-
-        htmlFile = open("%s/%s.html" % (self.rdir, opname), "w")
-        doc.write(htmlFile, newl="\n")
-        htmlFile.close()
-
-        return "%s.html" % opname
 
     def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
@@ -460,22 +363,6 @@ function showPage(item) {
         
     def write(self):
         self.start = utils.timer2()
-        
-        """
-        self.db.agg_thread(True)
-        self.db.agg_host(True)
-        self.db.agg_all(True)
-        
-        metapages = []
-        iopages = []
-        for oper in self.db.get_opers():
-            if oper in FSOP_META:
-                metapages.append((oper, self.oper_page(oper)))
-            elif oper in FSOP_IO:
-                iopages.append((oper, self.oper_page(oper)))
-        self.index_page()
-        self.navi_page(metapages, iopages)
-        """
         self.css_file()
         self.main_page()
         message("Report generated in %s" % self.rdir)

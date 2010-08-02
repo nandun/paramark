@@ -22,7 +22,7 @@
 import os
 import stat
 
-from modules.verbose import vbs
+from modules.verbose import *
 from modules.utils import *
 
 __all___ = ["write"]
@@ -49,7 +49,7 @@ def optype(opname):
     elif opname in OPS_IO: return TYPE_IO
 
 # I/O Primitives
-class write():
+class write:
     def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE, 
         flags=os.O_CREAT | os.O_RDWR, mode=stat.S_IRUSR | stat.S_IWUSR,
         fsync=False, dryrun=False):
@@ -71,7 +71,7 @@ class write():
         """
 
         if self.dryrun:
-            vbs.verbose("write: os.write(%s, %d) * %d" %
+            verbose("write: os.write(%s, %d) * %d" %
                 (self.f, self.bsize, self.fsize/self.bsize), VERBOSE_DEBUG)
             return None
 
@@ -84,7 +84,7 @@ class write():
             self.fsize = self.bsize * cnt
         self.opcnt = cnt
 
-        vbs.verbose("write: os.open(%s, %d, %d)" %
+        verbose("write: os.open(%s, %d, %d)" %
             (self.f, self.flags, self.mode), VERBOSE_DEBUG)
         s = timer()
         fd = os.open(self.f, self.flags, self.mode)
@@ -95,7 +95,7 @@ class write():
             res = os.write(fd, blk)
             self.elapsed.append(timer() - s)
             if res != self.bsize:
-                vbs.warning("written bytes (%d) != bsize (%d)"
+                warning("written bytes (%d) != bsize (%d)"
                     % (res, self.bsize))
             cnt -= 1
 
@@ -104,7 +104,7 @@ class write():
             os.fsync(fd)
             self.elapsed.append(timer() - s)
         
-        vbs.verbose("write: os.close(%d)" % fd, VERBOSE_DEBUG)
+        verbose("write: os.close(%d)" % fd, VERBOSE_DEBUG)
         s = timer()
         os.close(fd)
         self.elapsed.append(timer() - s)
