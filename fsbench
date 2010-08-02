@@ -27,16 +27,16 @@ import sys
 import os
 
 from modules import gxp
-import fs.opts
+from fs.opts import Options
 import fs.bench
 
 # Standalone entry
-def standalone_main(fsopt):
-    fsopt.set_usage("[gxpc mw] fsbench [options]")
-    fsopt.load()
+def standalone_main(opt):
+    opt.set_usage("[gxpc mw] fsbench [options]")
+    opt.load()
     
-    mybench = fs.bench.Bench(fsopt)
-    if fsopt.opts.report:
+    mybench = fs.bench.Bench(opt)
+    if opt.vals.report:
         mybench.report()
         return 0
     mybench.load()
@@ -68,8 +68,8 @@ def gxpc_main(fsopt):
 
 # Main entry
 def main(argv):
-    opt = fs.opts.Options(argv)
-    if opt.opts.gxpmode:
+    opt = Options(argv)
+    if opt.vals.gxpmode:
         return gxpc_main(opt)
     else:
         return standalone_main(opt)

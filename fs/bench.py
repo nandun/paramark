@@ -46,13 +46,13 @@ from data import Database as FSDatabase
 
 __all__ = []
 
-class Bench():
+class Bench:
     """
     General file system benchmark
     """
     def __init__(self, opts):
         self.opts = opts
-        self.cfg = self.opts.opts
+        self.cfg = self.opts.vals
         
         # Benchmark runtime environment
         self.runtime = Values()
@@ -132,7 +132,7 @@ class Bench():
                     / sync_time)
         
         # Write report
-        if self.cfg.logdir is None:  # generate random logdir in cwd
+        if self.cfg.logdir is None or self.cfg.logdir == "":
             self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
                    (self.runtime.user, time.strftime("%j-%H-%M-%S")))
         
@@ -224,14 +224,10 @@ class Bench():
         message("Start benchmarking ...")
         self.start = timer()
         
-        for t in self.threads:
-            t.start()
+        for t in self.threads: t.start()
+        for t in self.threads: t.join()
 
-        for t in self.threads:
-            t.join()
-        
-        if self.cfg.dryrun:
-            sys.stdout.write("Dryrun, nothing executed.\n")
+        if self.cfg.dryrun: message("Dryrun, nothing executed.\n")
         
         self.end = timer()
         
@@ -270,7 +266,10 @@ class Bench():
                 % logdir)
         
         # Save results
-        self.db = FSDatabase("%s/fsbench.db" % logdir)
+        if self.cfg.nolog:
+            self.db = FSDatabase(":memory:")
+        else:
+            self.db = FSDatabase("%s/fsbench.db" % logdir)
         self.db.ins_runtime(self.runtime)
         self.db.ins_conf('%s/fsbench.conf' % logdir)
 
@@ -297,7 +296,7 @@ class Bench():
         res = self.gxp.rp.readline().strip('\n')
         return cPickle.loads('\n'.join(res.split('|')))
 
-class ThreadSync():
+class ThreadSync:
     """
     Thread synchornization
     """
@@ -340,7 +339,7 @@ class BenchThread(threading.Thread):
         self.load.rdir = os.path.abspath("%s/pmark-wdir-%s-%s-%s-%03d" \
             % (self.cfg.wdir, self.cfg.hid, self.cfg.pid, self.cfg.tid, 
             random.randint(0,999)))
-
+        
         # Generate load
         self._meta_load()
         self._io_load()
@@ -380,14 +379,14 @@ class BenchThread(threading.Thread):
         self.load.rmdir = dirs
         for o in ["creat", "access", "open", "open_close", "stat_exist",
             "stat_non", "utime", "chmod", "rename", "unlink"]:
-            self.load.set_value(o, self.load.meta_files)
+            self.load.set(o, self.load.meta_files)
 
     def _io_load(self):
         self.load.io_file = \
             "%s/io-%d.file" % (self.load.rdir, random.randint(0,999))
         
         for o in oper.OPS_IO:
-            self.load.set_value(o, self.load.io_file)
+            self.load.set(o, self.load.io_file)
         
     def run(self):
         if not self.cfg.dryrun:

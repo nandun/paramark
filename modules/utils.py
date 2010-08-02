@@ -33,20 +33,15 @@ from verbose import *
 INTEGER_MAX = sys.maxint
 INTEGER_MIN = -sys.maxint -1
 
+B = 1
 KB = 1024
 MB = 1048576
 GB = 1073741824
 TB = 1099511627776
 
-VERBOSE_PROMPT = 0
-VERBOSE_STAGE = 1
-VERBOSE_ERROR = 2
-VERBOSE_WARNING = 3
-VERBOSE_INFO = 4
-VERBOSE_DETAILS = 5
-
-OPDATA_META = ["op", "nproc", "factor", "opcnt", "what"]
-OPDATA_IO = ["op", "nproc", "fsize", "blksize", "what"]
+USECS = 1e-06
+MSECS = 1e-03
+SECS = 1
 
 if sys.platform == "win32":
     timer = time.clock
@@ -64,18 +59,15 @@ def es(s):
     sys.stderr.write(s)
 
 def parse_datasize(size):
-    """ return the data size in bytes expressed by size string """
+    """
+    Return the data size in bytes expressed by size string
+    """
     size = size.upper()
-    if size.isdigit():
-        return eval(size)
-    if size.endswith('B'):
-        size = size[0:-1]
-    if size.endswith('K'):
-        return eval(size[0:-1]) * KB
-    if size.endswith('M'):
-        return eval(size[0:-1]) * MB
-    if size.endswith('G'):
-        return eval(size[0:-1]) * GB
+    if size.endswith('B'): size = size[0:-1]
+    if size.isdigit(): return eval(size)
+    if size.endswith('K'): return eval(size[0:-1]) * KB
+    if size.endswith('M'): return eval(size[0:-1]) * MB
+    if size.endswith('G'): return eval(size[0:-1]) * GB
 
 def smart_datasize(size):
     """ given a size in bytes, return a tuple (num, unit) """

@@ -1,7 +1,19 @@
 #############################################################################
-# ParaMark: A Benchmark for Parallel/Distributed Systems
+# ParaMark: Benchmarking Suite for Parallel/Distributed Systems
 # Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
-# Distributed under GNU General Public Licence version 3
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
 #
@@ -13,8 +25,8 @@ import sys
 import os
 import stat
 
-from modules.opts import Options as CommonOptions
 from modules.utils import *
+from modules.opts import Options as CommonOptions
 
 class Options(CommonOptions):
     """
@@ -36,7 +48,7 @@ class Options(CommonOptions):
         
         self.optParser.add_option("-n", "--no-report", action="store_true",
             dest="noreport", default=False,
-            help="Do NOT report after benchmarking (default: disabled)")
+            help="do NOT report after benchmarking (default: disabled)")
         
         self.optParser.add_option("-w", "--wdir", action="store", 
             type="string", dest="wdir", metavar="PATH", default=None,
@@ -48,22 +60,62 @@ class Options(CommonOptions):
         
         self.optParser.add_option("-t", "--threads", action="store", 
             type="int", dest="nthreads", metavar="NUM", default=None,
-            help="number of current threads (default: 1)")
+            help="number of concurrent threads (default: 1)")
         
         self.optParser.add_option("-f", "--force", action="store_false",
             dest="confirm", default=True,
-            help="Force to go, do not confirm (default: disabled)")
+            help="force to go, do not confirm (default: disabled)")
         
         self.optParser.add_option("--quick-report", action="store_true",
             dest="quickreport", default=False,
-            help="Generate quick report, does not save any data (default: disabled)")
+            help="quick report, does not save any data (default: disabled)")
         
         self.optParser.add_option("--text-report", action="store_true",
             dest="textreport", default=False,
-            help="Generate text report (default: disabled)")
+            help="generate text report (default: disabled)")
+        
+        self.optParser.add_option("--no-log", action="store_true",
+            dest="nolog", default=False,
+            help="do NOT save log, create report only (default: disabled)")
     
-    def load(self):
-        CommonOptions.load(self)
+    def _invalid_val(self, opt, val):
+        from os import O_RDONLY, O_WRONLY, O_RDWR, O_APPEND,O_CREAT, \
+            O_EXCL, O_TRUNC, F_OK, R_OK, W_OK, X_OK
+        from stat import S_ISUID, S_ISGID, S_ENFMT, S_ISVTX, \
+            S_IREAD, S_IWRITE, S_IEXEC, S_IRWXU, S_IRUSR, S_IWUSR, \
+            S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, \
+            S_IROTH, S_IWOTH, S_IXOTH
+        from oper import OPS_META, OPS_IO
+        
+        if opt == "verbosity": return int(val)
+        elif opt == "dryrun": return bool(eval(val))
+        elif opt == "nthreads": return int(val)
+        elif opt == "confirm": return bool(val)
+        elif opt == "opcnt": return int(val)
+        elif opt == "factor": return int(val)
+        elif opt == "fsize":
+            return map(lambda v:parse_datasize(v),
+                val.split(','))
+        elif opt == "bsize":
+            return map(lambda v:parse_datasize(v),
+                val.split(','))
+        elif opt == "flags":
+            if val.startswith("O_"): return eval(val)
+            else: return str(val)
+        elif opt == "mode": return eval(val)
+        elif opt == "meta":
+            meta = []
+            for m in val.split(','):
+                if m in OPS_META: meta.append(m)
+            return meta
+        elif opt == "io":
+            io = []
+            for o in val.split(','):
+                if o in OPS_IO: io.append(o)
+            return io
+        return val
+    
+    def check_values(self):
         # Rearrange operation sequence according to dependencies
         if len(self.opts.meta) > 0:
             _meta = ["mkdir", "rmdir"]
@@ -92,15 +144,12 @@ class Options(CommonOptions):
 
 FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark Default Benchmarking Configuration
-# last updated: 2010/03/26
+# last updated: 2010/08/03
 
 ##########################################################################
 # Howto:
 #   * Only modify the values you would like to change.
 #   * Lines beginning with '#' or ';' are ignored.
-#   * Every value should be an evaluable string by Python.
-#     For example, a path value should be embraced by quotation marks, 
-#     i.e., '/full/path' or "/full/path"
 #   * Following the conventions of this file will be safe.
 ##########################################################################
 
@@ -110,7 +159,7 @@ FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 [global]
 # Benchmark working directory
 # Don't forget quotation marks: " "
-wdir = "./"
+wdir = ./
 
 # Number of concurrent benchmarking thread
 nthreads = 1
@@ -125,30 +174,29 @@ verbosity = 0
 dryrun = False
 
 # Log directory of benchmarking results
-# Generate a random log directory when logdir is None
-logdir = None
+# Generate a random log directory when logdir is not set
+logdir =
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-# e.g., meta = [], meta = ["mkdir", "rmdir"]
-meta = ["mkdir", "rmdir", "creat", "access", "open", "open_close", \
-"stat_exist", "stat_non", "utime", "chmod", "rename", "unlink"]
+# e.g., meta = , meta = mkdir,rmdir,creat,access,open,open_close,stat_exist,stat_non,utime,chmod,rename,unlink
+meta =
 
 # I/O operations to be performed
-# e.g., io = [], io = ["write"]
-io = ["read", "reread", "write", "rewrite", "fread", "freread", \
-"fwrite", "frewrite", "offsetread", "offsetwrite"]
+# e.g., io = , io = read,reread,write,rewrite,fread,freread,fwrite,frewrite,offsetread,offsetwrite
+io = write
 
 # Overwrite following local settings
-override=True
+override = True
 
 # Variables to override
 opcnt = 10
 factor = 16
 
-# K=1024, M=1048576, G=1073741824, T=1099511627776
-fsize = 10 * 1048576
-bsize = 4 * 1024
+# File size and block size
+# e.g., fsize=1K,2M,3G, bsize=1KB,2mb,3gb
+fsize = 1M
+bsize = 1K
 
 ##########################################################################
 # Local Operation Options
@@ -158,14 +206,14 @@ bsize = 4 * 1024
 
 #
 # Options for flags
-# os.O_RDONLY, os.O_WRONLY, os.RDWR, os.O_APPEND, os.O_CREAT, os.O_EXCL
-# os.O_TRUNC or their inclusive OR
+# O_RDONLY, O_WRONLY, RDWR, O_APPEND, O_CREAT, O_EXCL
+# O_TRUNC or their inclusive OR
 #
 # Options for mode
-# stat.S_ISUID, stat.S_ISGID, stat.S_ENFMT, stat.S_ISVTX, stat.S_IREAD,
-# stat.S_IWRITE, stat.S_IEXEC, stat.S_IRWXU, stat.S_IRUSR, stat.S_IWUSR,
-# stat.S_IXUSR, stat.S_IRWXG, stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP,
-# stat.S_IRWXO, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH or their bitwise OR
+# S_ISUID, S_ISGID, S_ENFMT, S_ISVTX, S_IREAD,
+# S_IWRITE, S_IEXEC, S_IRWXU, S_IRUSR, S_IWUSR,
+# S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP,
+# S_IRWXO, S_IROTH, S_IWOTH, S_IXOTH or their bitwise OR
 #
 
 # Metadata operation
@@ -179,24 +227,24 @@ factor = 16
 
 [creat]
 opcnt = 0
-flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC 
-mode = stat.S_IRUSR | stat.S_IWUSR
+flags = O_CREAT | O_WRONLY | O_TRUNC 
+mode = S_IRUSR | S_IWUSR
 factor = 16
 
 [access]
 opcnt = 0
-# os.F_OK, os.R_OK, os.W_OK, os.X_OK or their inclusive OR
-mode = os.F_OK
+# F_OK, R_OK, W_OK, X_OK or their inclusive OR
+mode = F_OK
 factor = 16
 
 [open]
 opcnt = 0
-flags = os.O_RDONLY
+flags = O_RDONLY
 factor = 16
 
 [open_close]
 opcnt = 0
-flags = os.O_RDONLY
+flags = O_RDONLY
 factor = 16
 
 [stat_exist]
@@ -214,7 +262,7 @@ factor = 16
 
 [chmod]
 opcnt = 0
-chmod = stat.S_IEXEC
+chmod = S_IEXEC
 factor = 16
 
 [rename]
@@ -229,65 +277,58 @@ factor = 16
 [read]
 fsize = 0
 bsize = 0
-flags = os.O_RDONLY
+flags = O_RDONLY
 
 [reread]
 fsize = 0
 bsize = 0
-flags = os.O_RDONLY
+flags = O_RDONLY
 
 [write]
 fsize = 0
 bsize = 0
-flags = os.O_CREAT | os.O_RDWR
-mode = stat.S_IRUSR | stat.S_IWUSR
-byte = '0'
+flags = O_CREAT | O_RDWR
+mode = S_IRUSR | S_IWUSR
 fsync = False
 
 [rewrite] 
 fsize = 0
 bsize = 0
-flags = os.O_CREAT | os.O_RDWR
-mode = stat.S_IRUSR | stat.S_IWUSR
-byte = '1'
+flags = O_CREAT | O_RDWR
+mode = S_IRUSR | S_IWUSR
 fsync = False
 
 [fread]
 fsize = 0
 bsize = 0
 # 'r', 'w', or 'a'
-flags = 'r'
+flags = r
 
 [freread]
 fsize = 0
 bsize = 0
-flags = 'r'
+flags = r
 
 [fwrite]
 fsize = 0
 bsize = 0
-flags = 'w'
-byte = '2'
+flags = w
 fsync = False
 
 [frewrite]
 fsize = 0
 bsize = 0
-flags = 'w'
-byte = '3'
+flags = w
 fsync = False
 
 [offsetread]
 fsize = 0
 bsize = 0
-flags = os.O_RDONLY
+flags = O_RDONLY
 
 [offsetwrite]
 fsize = 0
 bsize = 0
-flags = os.O_CREAT | os.O_RDWR
-byte = '4'
+flags = O_CREAT | O_RDWR
 fsync = False
 """
-
-# EOF
