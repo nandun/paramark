@@ -32,29 +32,24 @@ import StringIO
 import threading
 from __builtin__ import open as _open # for open()
 
-if not hasattr(os, "SEEK_SET"):
-    os.SEEK_SET = 0
-
 import version
 from modules.verbose import *
-from modules.utils import *
-from modules.opts import Values
+from modules.common import *
 from modules import num
 from modules import gxp
+from load import *
 import oper
 from data import Database as FSDatabase
 
-__all__ = []
+VERBOSE = 2
+
+__all__ = ['Bench']
 
 class Bench:
-    """
-    General file system benchmark
-    """
     def __init__(self, opts):
         self.opts = opts
         self.cfg = self.opts.vals
         
-        # Benchmark runtime environment
         self.runtime = Values()
         self.runtime.version = version.PARAMARK_VERSION
         self.runtime.date = version.PARAMARK_DATE
@@ -64,16 +59,133 @@ class Bench:
         self.runtime.hostname = socket.gethostname()
         self.runtime.platform = " ".join(os.uname())
         self.runtime.cmdline = " ".join(sys.argv)
-        self.runtime.mountpoint = get_fs_info(self.cfg.wdir)
+        self.runtime.mountpoint = get_filesystem_info(self.cfg.wdir)
         self.runtime.wdir = self.cfg.wdir
         # May be set later in GXP mode
         self.runtime.hid = 0
         self.runtime.nhosts = 1
-        
+
+        self.cfg.hid = self.runtime.hid
+        self.cfg.pid = self.runtime.pid
+        self.loader = BenchLoad(self.cfg)
         self.threads = []
        
-        self.VERBOSE_LEVEL = 3
+    def load(self):
+        if self.cfg.gxpmode:
+            self.gxp = Values()
+            self.gxp.wp = os.fdopen(3, "wb")
+            self.gxp.rp = os.fdopen(4, "rb")
+            self.gxp.rank = gxp.get_rank()
+            self.gxp.size = gxp.get_size()
+            self.runtime.hid = self.gxp.rank
+            self.runtime.nhosts = self.gxp.size
+        
+        self.threadsync = ThreadSync(self.cfg.nthreads)
+        for i in range(0, self.cfg.nthreads):
+            if i == 0 and self.cfg.gxpmode:
+                cfg.gxp = self.gxp
+            self.threads.append(BenchThread(i, self.threadsync, self.loader))
 
+    def run(self):
+        message("Start benchmarking ...")
+        self.start = timer()
+        
+        for t in self.threads: t.start()
+        for t in self.threads: t.join()
+
+        if self.cfg.dryrun: message("Dryrun, nothing executed.\n")
+        
+        self.end = timer()
+        
+        self.runtime.start = "%r" % self.start
+        self.runtime.end = "%r" % self.end
+
+    def save(self):
+        if self.cfg.dryrun or self.cfg.quickreport: return
+    
+        if self.cfg.gxpmode:
+            # Gather results
+            self.send_res()
+            if self.gxp.rank == 0:
+                reslist = []
+                for i in range(0, self.gxp.size):
+                    reslist.append(self.recv_res())
+            else:
+                return
+       
+        if self.cfg.logdir is None:  # generate random logdir in cwd
+            self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
+                   (self.runtime.user, time.strftime("%j-%H-%M-%S")))
+        
+        # Initial log directory and database
+        if self.cfg.gxpmode:
+            self.cfg.confirm = False
+        self.cfg.logdir = smart_makedirs(self.cfg.logdir,
+            self.cfg.confirm)
+        logdir = os.path.abspath(self.cfg.logdir)
+        
+        # Save used configuration file
+        self.opts.save_conf("%s/fsbench.conf" % logdir)
+        if self.cfg.verbosity >= 1:
+            self.vs("applied configurations saved to %s/fsbench.conf\n" 
+                % logdir)
+        
+        # Save results
+        if self.cfg.nolog:
+            self.db = FSDatabase(":memory:")
+        else:
+            self.db = FSDatabase("%s/fsbench.db" % logdir)
+        self.db.ins_runtime(self.runtime)
+        self.db.ins_conf('%s/fsbench.conf' % logdir)
+
+        if self.cfg.gxpmode:
+            self.db.ins_rawdata(reslist.pop(0), self.start, True)
+            for res in reslist:
+                self.db.ins_rawdata(res, self.start)
+        else:
+            for t in self.threads:
+                self.db.insert_rawdata(t.get_res())
+        self.db.close()
+
+        if self.cfg.verbosity >= 1:
+            self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
+    
+    def report(self, path=None):
+        if self.cfg.dryrun or self.cfg.noreport: return
+
+        message("Generating report ...")
+
+        if self.cfg.quickreport:
+            self.quick_report()
+            return
+        
+        if self.cfg.gxpmode and self.gxp.rank != 0:
+            return
+        
+        import report
+        logdir = self.cfg.logdir
+        if self.cfg.report:
+            logdir = self.cfg.report
+        if path:
+            logdir = path
+        if self.cfg.textreport:
+            self.report = report.TextReport(logdir)
+        else:
+            self.report = report.HTMLReport(logdir)
+        self.report.write()
+         
+    
+    def send_res(self):
+        # Packing string without newlines
+        res = cPickle.dumps([t.get_res() for t in self.threads], 0)
+        self.gxp.wp.write('|'.join(res.split('\n')))
+        self.gxp.wp.write("\n")
+        self.gxp.wp.flush()
+
+    def recv_res(self):
+        res = self.gxp.rp.readline().strip('\n')
+        return cPickle.loads('\n'.join(res.split('|')))
+    
     def vs(self, msg):
         sys.stderr.write(msg)
 
@@ -171,135 +283,8 @@ class Bench:
         f.close() 
         sys.stdout.write("Report generated in %s/report.txt\n" % self.cfg.logdir)
         
-    def report(self, path=None):
-        if self.cfg.dryrun or self.cfg.noreport:
-            return
-
-        message("Generating report ...")
-
-        if self.cfg.quickreport:
-            self.quick_report()
-            return
-        
-        if self.cfg.gxpmode and self.gxp.rank != 0:
-            return
-        
-        import report
-        logdir = self.cfg.logdir
-        if self.cfg.report:
-            logdir = self.cfg.report
-        if path:
-            logdir = path
-        if self.cfg.textreport:
-            self.report = report.TextReport(logdir)
-        else:
-            self.report = report.HTMLReport(logdir)
-        self.report.write()
-         
-    def load(self):
-        if self.cfg.gxpmode:
-            self.gxp = Values()
-            self.gxp.wp = os.fdopen(3, "wb")
-            self.gxp.rp = os.fdopen(4, "rb")
-            self.gxp.rank = gxp.get_rank()
-            self.gxp.size = gxp.get_size()
-            self.runtime.hid = self.gxp.rank
-            self.runtime.nhosts = self.gxp.size
-
-        self.threadsync = ThreadSync(self.cfg.nthreads)
-        for i in range(0, self.cfg.nthreads):
-            # setup threads
-            cfg = copy.deepcopy(self.cfg)
-            cfg.hid = self.runtime.hid
-            cfg.pid = self.runtime.pid
-            cfg.tid = i
-            cfg.verbose = False
-            if i == 0 and self.cfg.gxpmode:
-                cfg.gxp = self.gxp
-            if self.cfg.verbosity > self.VERBOSE_LEVEL:
-                cfg.verbose = True
-            self.threads.append(BenchThread(self.threadsync, cfg))
-
-    def run(self):
-        message("Start benchmarking ...")
-        self.start = timer()
-        
-        for t in self.threads: t.start()
-        for t in self.threads: t.join()
-
-        if self.cfg.dryrun: message("Dryrun, nothing executed.\n")
-        
-        self.end = timer()
-        
-        self.runtime.start = "%r" % self.start
-        self.runtime.end = "%r" % self.end
-
-    def save(self):
-        if self.cfg.dryrun or self.cfg.quickreport:
-            return
-    
-        if self.cfg.gxpmode:
-            # Gather results
-            self.send_res()
-            if self.gxp.rank == 0:
-                reslist = []
-                for i in range(0, self.gxp.size):
-                    reslist.append(self.recv_res())
-            else:
-                return
-       
-        if self.cfg.logdir is None:  # generate random logdir in cwd
-            self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
-                   (self.runtime.user, time.strftime("%j-%H-%M-%S")))
-        
-        # Initial log directory and database
-        if self.cfg.gxpmode:
-            self.cfg.confirm = False
-        self.cfg.logdir = smart_makedirs(self.cfg.logdir,
-            self.cfg.confirm)
-        logdir = os.path.abspath(self.cfg.logdir)
-        
-        # Save used configuration file
-        self.opts.save_conf("%s/fsbench.conf" % logdir)
-        if self.cfg.verbosity >= 1:
-            self.vs("applied configurations saved to %s/fsbench.conf\n" 
-                % logdir)
-        
-        # Save results
-        if self.cfg.nolog:
-            self.db = FSDatabase(":memory:")
-        else:
-            self.db = FSDatabase("%s/fsbench.db" % logdir)
-        self.db.ins_runtime(self.runtime)
-        self.db.ins_conf('%s/fsbench.conf' % logdir)
-
-        if self.cfg.gxpmode:
-            self.db.ins_rawdata(reslist.pop(0), self.start, True)
-            for res in reslist:
-                self.db.ins_rawdata(res, self.start)
-        else:
-            for t in self.threads:
-                self.db.insert_rawdata(t.get_res())
-        self.db.close()
-
-        if self.cfg.verbosity >= 1:
-            self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
-    
-    def send_res(self):
-        # Packing string without newlines
-        res = cPickle.dumps([t.get_res() for t in self.threads], 0)
-        self.gxp.wp.write('|'.join(res.split('\n')))
-        self.gxp.wp.write("\n")
-        self.gxp.wp.flush()
-
-    def recv_res(self):
-        res = self.gxp.rp.readline().strip('\n')
-        return cPickle.loads('\n'.join(res.split('|')))
 
 class ThreadSync:
-    """
-    Thread synchornization
-    """
     def __init__(self, nthreads):
         self.n = nthreads
         self.cnt = 0
@@ -318,45 +303,20 @@ class ThreadSync:
         self.event.wait()
 
 class BenchThread(threading.Thread):
-    """
-    Benchmarking thread that executes a series of operations
-    """
-    def __init__(self, sync, cfg):
+    def __init__(self, tid, sync, loader):
         threading.Thread.__init__(self)
         
+        self.tid = tid
         self.sync = sync
-        self.cfg = cfg
-        self.name = "Thread h%s:p%s:t%s" \
-            % (self.cfg.hid, self.cfg.pid, self.cfg.tid)
+        self.gxpmode = loader.cfg.gxpmode
+        self.dryrun = loader.cfg.dryrun
+        self.hid = loader.cfg.hid
+        self.pid = loader.cfg.pid
+
+        self.name = "Thread h%s:p%s:t%s" % (self.hid, self.pid, self.tid)
+        self.wdir, self.load = loader.generate(self.tid)
 
         self.synctime = []
-        self.opset = []
-        self.load = Values()
-
-        self._load()
-
-    def _load(self):
-        self.load.rdir = os.path.abspath("%s/pmark-wdir-%s-%s-%s-%03d" \
-            % (self.cfg.wdir, self.cfg.hid, self.cfg.pid, self.cfg.tid, 
-            random.randint(0,999)))
-        
-        # Generate load
-        self._meta_load()
-        self._io_load()
-
-        # Configure operations
-        for o in self.cfg.meta + self.cfg.io:
-            if o == "write":
-                for fs in self.cfg.write.fsize:
-                    for bs in self.cfg.write.bsize:
-                        op = oper.write(
-                            f="%s-%d-%d" % (self.load.write, fs, bs), 
-                            fsize=fs, bsize=bs,
-                            flags=self.cfg.write.flags,
-                            mode=self.cfg.write.mode,
-                            fsync=self.cfg.write.fsync,
-                            dryrun=self.cfg.dryrun)
-                        self.opset.append(op)
 
     def _meta_load(self):
         self.load.meta_dirs = []
@@ -381,28 +341,19 @@ class BenchThread(threading.Thread):
             "stat_non", "utime", "chmod", "rename", "unlink"]:
             self.load.set(o, self.load.meta_files)
 
-    def _io_load(self):
-        self.load.io_file = \
-            "%s/io-%d.file" % (self.load.rdir, random.randint(0,999))
-        
-        for o in oper.OPS_IO:
-            self.load.set(o, self.load.io_file)
-        
     def run(self):
-        if not self.cfg.dryrun:
-            os.makedirs(self.load.rdir)
+        if not self.dryrun: os.makedirs(self.wdir)
         self.barrier()
         
-        for op in self.opset:
+        for op in self.load:
             op.exe()
             self.barrier(op.name)
         
-        if not self.cfg.dryrun:
-            shutil.rmtree(self.load.rdir)
+        if not self.dryrun: shutil.rmtree(self.wdir)
 
     def barrier(self, name=""):
         self.sync.barrier()
-        if self.cfg.gxpmode and self.cfg.tid == 0:
+        if self.gxpmode and self.tid == 0:
             self.gxp_barrier()
         self.synctime.append((name, timer()))
 
@@ -415,18 +366,13 @@ class BenchThread(threading.Thread):
         return 0
 
     def get_res(self):
-        """
-        Return a Values() object stored with benchmark results
-        """
         val = Values()
-        val.hid = self.cfg.hid
-        val.pid = self.cfg.pid
-        val.tid = self.cfg.tid
+        val.hid = self.hid
+        val.pid = self.pid
+        val.tid = self.tid
         val.synctime = self.synctime
-        val.opset = [o.get() for o in self.opset]
+        val.opset = [o.get() for o in self.load]
         return val
-
-__all__.append("BenchThread")
 
 class Op:
     def __init__(self):

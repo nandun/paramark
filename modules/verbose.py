@@ -36,6 +36,9 @@ def warning(s):
     sys.stdout.flush()
     sys.stdout.write("Warning: %s\n" % s)
 
+def debug(s):
+    sys.stdout.write("Debug: %s\n" % s)
+
 def verbose(s, level=0):
     if global_verbose_level >= level:
         sys.stdout.flush()
