@@ -26,8 +26,8 @@ import textwrap
 import ConfigParser
 import StringIO
 
-import verbose as vbs
 from verbose import *
+from common import *
 
 OPTS_VERBOSE_NORMAL = 1
 OPTS_VERBOSE_DEBUG = 5
@@ -81,9 +81,9 @@ class Options:
             dest="dryrun", default=None, 
             help="dry run, do not execute (default: disabled)")
         
-    def _invalid_val(self, opt, val):
+    def _valid_val(self, opt, val):
         if opt == "verbosity": return int(val)
-        elif opt == "dryrun": return bool(val)
+        elif opt == "dryrun": return bool(eval(str(val)))
         return val
                 
     def has(self, opt):
@@ -170,7 +170,7 @@ class Options:
             if isinstance(v, Values):
                 self.validate_values(v)
             else:
-                values.set(o, self._invalid_val(o, v))
+                values.set(o, self._valid_val(o, v))
             
     def load(self):
         if self.vals.help:
@@ -200,37 +200,6 @@ class Options:
                     sys.stdout.write("debug: opt=%s, val=%s, type=%s\n" 
                         % (k, v, type(v)))
                 sys.stdout.flush()
-
-
-class Values:
-    def __init__(self, values=None):
-        if isinstance(values, list):
-            for k, v in values:
-                setattr(self, k, v)
-        elif isinstance(values, dict):
-            for k, v in values.items():
-                setattr(self, k, v)
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    def has(self, item):
-        return hasattr(item)
-
-    def set(self, item, val):
-        setattr(self, item, val)
-
-    def get(self, item, val):
-        return getattr(self, item, val)
-
-    def update(self, dict):
-        self.__dict__.update(dict)
-
-    def get_kws(self):
-        return self.__dict__
-
-    def items(self):
-        return self.__dict__.items()
 
 
 FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\

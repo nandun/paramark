@@ -18,7 +18,7 @@
 
 
 #
-# modules/utils.py
+# modules/common.py
 # Common Constants, Routines and Utilities
 #
 
@@ -42,6 +42,9 @@ TB = 1099511627776
 USECS = 1e-06
 MSECS = 1e-03
 SECS = 1
+
+if not hasattr(os, "SEEK_SET"):
+    os.SEEK_SET = 0
 
 if sys.platform == "win32":
     timer = time.clock
@@ -69,18 +72,39 @@ def parse_datasize(size):
     if size.endswith('M'): return eval(size[0:-1]) * MB
     if size.endswith('G'): return eval(size[0:-1]) * GB
 
-def smart_datasize(size):
-    """ given a size in bytes, return a tuple (num, unit) """
-    size = float(size)
-    if size < KB:
-        return (size, "B")
-    if size < MB:
-        return (size/KB, "KB")
-    if size < GB:
-        return (size/MB, "MB")
-    if size < TB:
-        return (size/GB, "GB")
-    return (size/TB, "TB")
+def unit_str(size, suffix="", rnd=3):
+    """
+    Given the size in bytes, return a string with unit.
+    """
+    if size < KB: unit = "B"
+    elif size < MB: unit = "KB"
+    elif size < GB: unit = "MB"
+    elif size < TB: unit = "GB"
+    else: unit = "TB"
+    return "%s %s%s" % (round(float(size)/eval(unit), rnd), unit, suffix)
+
+def unit_size(size):
+    """
+    Given the size in bytes, 
+    return the unit where the range of value falls in.
+    """
+    if size < KB: unit = "B"
+    elif size < MB: unit = "KB"
+    elif size < GB: unit = "MB"
+    elif size < TB: unit = "GB"
+    else: unit = "TB"
+    return unit, eval(unit)
+
+def unit_time(secs):
+    """
+    Given the size in seconds
+    return the unit where the range of value falls in.
+    """
+    if secs > SECS: unit = "SECS"
+    elif secs / MSECS > MSECS: unit = "MSECS"
+    else: unit = "USECS"
+    return unit.lower(), eval(unit)
+
 
 def smart_makedirs(path, confirm=True):
     try: os.makedirs(path)
@@ -191,23 +215,57 @@ def update_opts_kw(dict, restrict, opts, kw):
         for key in restrict:
             if dict.has_key(key) and kw.has_key(key): dict[key] = kw[key]
 
-# filesystem utility
-def get_fs_info(path):
-    """
-    Get mountpoint where the path belongs to
-    """
-    # TODO: more generic way to get fs info
-    # e.g., df
-    mountpoint = None
+# File System Utilities
+def get_filesystem_info(path):
+    mountfs = None
     if sys.platform == "linux2":
         path = os.path.abspath(path)
-        mountpoint = None
-        fp = open("/etc/mtab", "r")
+        fp = open("/proc/mounts", "r")
         for l in fp.readlines():
-            if path.startswith(l.strip().split(" ")[1]):
-                # TODO: startswith "/"
-                mountpoint = l.strip()
+            fs = l.strip().split(" ")[1]
+            if fs == "/":
+                rootfs = l.strip()
+                continue
+            elif path.startswith(fs):
+                mountfs = l.strip()
         fp.close()
+        if mountfs is None: mountfs = rootfs
     elif sys.platform == "darwin":
-        mountpoint = os.path.abspath(path)
-    return mountpoint
+        mountfs = os.path.abspath(path)
+    else:
+        mountfs = "Unknown/Unsupported mount partition"
+    
+    return mountfs
+
+class Values:
+    """
+    Container for key/value pairs
+    """
+    def __init__(self, values=None):
+        if isinstance(values, list):
+            for k, v in values:
+                setattr(self, k, v)
+        elif isinstance(values, dict):
+            for k, v in values.items():
+                setattr(self, k, v)
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    def has(self, item):
+        return hasattr(item)
+
+    def set(self, item, val):
+        setattr(self, item, val)
+
+    def get(self, item, val):
+        return getattr(self, item, val)
+
+    def update(self, dict):
+        self.__dict__.update(dict)
+
+    def get_kws(self):
+        return self.__dict__
+
+    def items(self):
+        return self.__dict__.items()
