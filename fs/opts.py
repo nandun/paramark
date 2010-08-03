@@ -25,19 +25,19 @@ import sys
 import os
 import stat
 
-from modules.utils import *
-from modules.opts import Options as CommonOptions
+from modules.common import *
+from modules.opts import Options as BaseOptions
 
-class Options(CommonOptions):
+class Options(BaseOptions):
     """
     Store/Retrieve options from/to configure files or command arguments
     """
     def __init__(self, argv=None):
-        CommonOptions.__init__(self, argv)
+        BaseOptions.__init__(self, argv)
         self.DEFAULT_CONFIG_STRING = FS_BENCHMARK_DEFAULT_CONFIG_STRING
     
     def _add_default_options(self):
-        CommonOptions._add_default_options(self)
+        BaseOptions._add_default_options(self)
         
         # Should keep default value None here, since we need to test
         # whether an option has been set by command
@@ -78,7 +78,7 @@ class Options(CommonOptions):
             dest="nolog", default=False,
             help="do NOT save log, create report only (default: disabled)")
     
-    def _invalid_val(self, opt, val):
+    def _valid_val(self, opt, val):
         from os import O_RDONLY, O_WRONLY, O_RDWR, O_APPEND,O_CREAT, \
             O_EXCL, O_TRUNC, F_OK, R_OK, W_OK, X_OK
         from stat import S_ISUID, S_ISGID, S_ENFMT, S_ISVTX, \
@@ -88,17 +88,16 @@ class Options(CommonOptions):
         from oper import OPS_META, OPS_IO
         
         if opt == "verbosity": return int(val)
-        elif opt == "dryrun": return bool(eval(val))
+        elif opt == "dryrun": return bool(eval(str(val)))
         elif opt == "nthreads": return int(val)
         elif opt == "confirm": return bool(val)
         elif opt == "opcnt": return int(val)
         elif opt == "factor": return int(val)
+        elif opt == 'wdir': return os.path.abspath(val)
         elif opt == "fsize":
-            return map(lambda v:parse_datasize(v),
-                val.split(','))
+            return map(lambda v:parse_datasize(v), val.split(','))
         elif opt == "bsize":
-            return map(lambda v:parse_datasize(v),
-                val.split(','))
+            return map(lambda v:parse_datasize(v), val.split(','))
         elif opt == "flags":
             if val.startswith("O_"): return eval(val)
             else: return str(val)
@@ -107,35 +106,29 @@ class Options(CommonOptions):
             meta = []
             for m in val.split(','):
                 if m in OPS_META: meta.append(m)
+            # Re-sort operations
+            if len(meta) > 0:
+                _meta = ['mkdir', 'rmdir']
+                if len(list_intersect([["creat", "access", "open", 
+                    "open_close", "stat_exist", "stat_non", "utime", 
+                    "chmod", "rename", "unlink"], meta])) > 0:
+                    _meta.insert(-1, "creat")
+                    _meta.insert(-1, "unlink")
+                for o in meta:
+                    if o not in _meta: _meta.insert(-2, o)
+                meta = _meta
             return meta
         elif opt == "io":
             io = []
             for o in val.split(','):
                 if o in OPS_IO: io.append(o)
+            if len(io) > 0:
+                _io = ['write']
+                for o in io:
+                    if o not in _io: _io.append(o)
+                io = _io
             return io
         return val
-    
-    def check_values(self):
-        # Rearrange operation sequence according to dependencies
-        if len(self.opts.meta) > 0:
-            _meta = ["mkdir", "rmdir"]
-            if len(list_intersect([["creat", "access", "open", "open_close",
-                "stat_exist", "stat_non", "utime", "chmod", "rename", 
-                "unlink"], self.opts.meta])) > 0:
-                _meta.insert(-1, "creat")
-                _meta.insert(-1, "unlink")
-            
-            for o in self.opts.meta:
-                if o not in _meta:
-                    _meta.insert(-2, o)
-            self.opts.meta = _meta
-        
-        if len(self.opts.io) > 0:
-            _io = ["write"]
-            for o in self.opts.io:
-                if o not in _io:
-                    _io.append(o)
-            self.opts.io = _io
         
 ##########################################################################
 # Default configure string
@@ -179,12 +172,12 @@ logdir =
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-# e.g., meta = , meta = mkdir,rmdir,creat,access,open,open_close,stat_exist,stat_non,utime,chmod,rename,unlink
-meta =
+# e.g., meta = mkdir,rmdir,creat,access,open,open_close,stat_exist,stat_non,utime,chmod,rename,unlink
+meta = 
 
 # I/O operations to be performed
-# e.g., io = , io = read,reread,write,rewrite,fread,freread,fwrite,frewrite,offsetread,offsetwrite
-io = write
+# e.g., io = read,reread,write,rewrite,fread,freread,fwrite,frewrite,offsetread,offsetwrite
+io = 
 
 # Overwrite following local settings
 override = True
@@ -301,7 +294,7 @@ fsync = False
 [fread]
 fsize = 0
 bsize = 0
-# 'r', 'w', or 'a'
+# 'r', 'w', 'a', 'b', '+', or their combinations
 flags = r
 
 [freread]

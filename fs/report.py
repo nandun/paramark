@@ -29,7 +29,7 @@ import xml.dom.minidom
 
 import version 
 from modules.verbose import *
-import modules.utils as utils
+from modules.common import *
 import modules.DHTML as DHTML
 import modules.num as num
 import bench
@@ -37,50 +37,9 @@ import data
 
 from oper import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
-B = 1
-KB = 1024
-MB = 1048576
-GB = 1073741824
-TB = 1099511627776
-
-USECS = 1e-06
-MSECS = 1e-03
-SECS = 1
-
 LOGSCALE_THRESHOLD = 1000
 
-def unit_str(size, suffix="", rnd=3):
-    """
-    Given the size in bytes, return a string with unit.
-    """
-    if size < KB: unit = "B"
-    elif size < MB: unit = "KB"
-    elif size < GB: unit = "MB"
-    elif size < TB: unit = "GB"
-    else: unit = "TB"
-    return "%s %s%s" % (round(float(size)/eval(unit), rnd), unit, suffix)
-
-def unit_size(size):
-    """
-    Given the size in bytes, 
-    return the unit where the range of value falls in.
-    """
-    if size < KB: unit = "B"
-    elif size < MB: unit = "KB"
-    elif size < GB: unit = "MB"
-    elif size < TB: unit = "GB"
-    else: unit = "TB"
-    return unit, eval(unit)
-
-def unit_time(secs):
-    """
-    Given the size in seconds
-    return the unit where the range of value falls in.
-    """
-    if secs > SECS: unit = "SECS"
-    elif secs / MSECS > MSECS: unit = "MSECS"
-    else: unit = "USECS"
-    return unit.lower(), eval(unit)
+REPORT_VERBOSE_LEVEL = 2
 
 class Report():
     def __init__(self, datadir):
@@ -90,15 +49,15 @@ class Report():
         # report root dir
         self.rdir = os.path.abspath("%s/report" % self.datadir)
         if not os.path.exists(self.rdir):
-            utils.smart_makedirs(self.rdir)
+            smart_makedirs(self.rdir)
         # figures dir
         self.fdir = os.path.abspath("%s/figures" % self.rdir)
         if not os.path.exists(self.fdir):
-            utils.smart_makedirs(self.fdir)
+            smart_makedirs(self.fdir)
         # data dir
         self.ddir = os.path.abspath("%s/data" % self.rdir)
         if not os.path.exists(self.ddir):
-            utils.smart_makedirs(self.ddir)
+            smart_makedirs(self.ddir)
     
     def __del__(self):
         self.db.close()
@@ -131,7 +90,7 @@ class TextReport(Report):
         self.filename = "%s/report.txt" % self.rdir
     
     def write(self):
-        self.start = utils.timer2()
+        self.start = timer2()
         self.out = open(self.filename, "w")
         
         self.db.agg_thread(True)
@@ -261,35 +220,14 @@ class HTMLReport(Report):
         
         body.appendChild(doc.H(self.TITLE_SIZE, value=self.TITLE))
         
-        # runtime summary
-        body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-        runtime = self.runtime_stats()
-        rows = []
-        rows.append(
-            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
-        rows.append(["Platform", "%s" % runtime["platform"]])
-        rows.append(
-            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
-        rows.append(
-            ["Time", "%s --- %s (%.2f seconds)" 
-            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["start"])))),
-              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"])))])
-        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
-        rows.append(["Command", "%s" % runtime["cmdline"]])
-        rows.append(["Configuration",
-            doc.HREF("fsbench.conf", "../fsbench.conf")])
-        rows.append(["Data", 
-            doc.HREF("fsbench.db", "../fsbench.db")])
-        body.appendChild(doc.table([], rows))
+        self.runtime_section(doc, body)
 
         # I/O Section
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
         body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write"))
         tHead = [["fsize", "bsize", "agg", "agg w/o close()",
-            "opAvg", "opMin", "opMax", "opStd", "opDist", "elasped"]]
+            "opAvg", "opMin", "opMax", "opStd", "opDist", "elasped",
+            "accAgg"]]
         rows = []
         unit_suffix = "/sec"
         for hid,pid,tid,fsize,bsize,elapsed,agg,aggnoclose,opavg,opmin, \
@@ -324,6 +262,28 @@ class HTMLReport(Report):
             elapsed_fighref = doc.HREF(doc.IMG(figlink, 
                 attrs={"class":"thumbnail"}), figlink)
             
+            accagg_unit, accagg_unit_val = unit_size(agg)
+            figname = "accagg_write_%s_%s_%s_%s_%s.png" % \
+                (hid, pid, tid, fsize, bsize)
+            t_bytes = 0
+            t_elapsed = elapsed[0]
+            accagg = [0.0] # open()
+            for e in elapsed[1:-1]:
+                t_bytes += bsize
+                t_elapsed += e
+                accagg.append(t_bytes / t_elapsed)
+            # TODO: calculate when fsync is set
+            accagg.append(t_bytes / (t_elapsed + elapsed[-1])) # close()
+            self.gplot.impulse_chart(
+                data=map(lambda a:a/accagg_unit_val, accagg),
+                name=figname,
+                title="Accumulated Aggregated Write Performance",
+                xlabel="System Call",
+                ylabel="Throughput (%s/sec)" % accagg_unit)
+            figlink = "figures/%s" % figname
+            accagg_fighref = doc.HREF(doc.IMG(figlink, 
+                attrs={"class":"thumbnail"}), figlink)
+            
             # unit conversion 
             fsize = unit_str(fsize)
             bsize = unit_str(bsize)
@@ -335,15 +295,14 @@ class HTMLReport(Report):
             opstd = unit_str(opstd, unit_suffix)
 
             rows.append([fsize,bsize,agg,aggnoclose,opavg,opmin,opmax,opstd,
-                opdist_fighref,elapsed_fighref])
+                opdist_fighref,elapsed_fighref,accagg_fighref])
         body.appendChild(doc.table(tHead, rows))
 
         # footnote
-        self.end = utils.timer2()
+        self.end = timer2()
         pNode = doc.tag("p", 
-            value="Took %.2f seconds, styled by "
-                % ((self.end[1] - self.start[1])),
-            attrs={"class":"footnote"})
+            value="Took %.2f seconds, styled by " 
+                % ((self.end[1] - self.start[1])), attrs={"class":"footnote"})
         pNode.appendChild(doc.HREF(self.CSS_FILE, "./%s" % self.CSS_FILE))
         pNode.appendChild(doc.TEXT(", created by "))
         pNode.appendChild(doc.HREF("ParaMark v%s" % version.PARAMARK_VERSION,
@@ -356,13 +315,38 @@ class HTMLReport(Report):
         doc.write(htmlFile)
         htmlFile.close()
 
+    def runtime_section(self, doc, body):
+        verbose("Generating \"Runtime Summary\" ...", REPORT_VERBOSE_LEVEL)
+        body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
+        runtime = self.runtime_stats()
+        rows = []
+        rows.append(
+            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
+        rows.append(["Platform", "%s" % runtime["platform"]])
+        rows.append(
+            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
+        rows.append(
+            ["Time", "%s --- %s (%.2f seconds)" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["start"])))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["end"])))),
+              (eval(runtime["end"]) - eval(runtime["start"])))])
+        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
+        rows.append(["Command", "%s" % runtime["cmdline"]])
+        rows.append(["Configuration",
+            doc.HREF("fsbench.conf", "../fsbench.conf")])
+        rows.append(["Data", 
+            doc.HREF("fsbench.db", "../fsbench.db")])
+        body.appendChild(doc.table([], rows))
+
     def css_file(self):
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
         cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
         cssFile.close()
         
     def write(self):
-        self.start = utils.timer2()
+        self.start = timer2()
         self.css_file()
         self.main_page()
         message("Report generated in %s" % self.rdir)
