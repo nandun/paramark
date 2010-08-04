@@ -46,7 +46,7 @@ class Database:
             ('opavg', 'REAL'), ('opmin', 'REAL'), ('opmax', 'REAL'),
             ('opstd', 'REAL')]
         self.FORMATS['meta'] = [('hid','INTEGER'), ('pid','INTEGER'),
-            ('tid','INTEGER'), ('count', 'INTEGER'), ('factor', 'INTEGER'),
+            ('tid','INTEGER'), ('opcnt', 'INTEGER'), ('factor', 'INTEGER'),
             ('elapsed', 'BLOB'), ('agg', 'REAL'), ('opavg', 'REAL'),
             ('opmin', 'REAL'), ('opmax', 'REAL')]
         self.FORMATS['aggdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
@@ -133,7 +133,23 @@ class Database:
         """
         for o in res.opset:
             if oper.optype(o["name"]) == oper.TYPE_META:
-                continue
+                # Aggregated throughput
+                total_elapsed = num.sum(o["elapsed"])
+                agg = o["opcnt"] / total_elapsed # ops/sec
+                
+                # Per-operation throughput
+                tlist = map(lambda e:1/e, o["elapsed"])
+                opavg = num.average(tlist)
+                opmin = num.min(tlist)
+                opmax = num.max(tlist)
+                opstd = num.std(tlist)
+
+                self.create_table(o["name"], self.FORMATS["meta"], overwrite)
+                self.cur.execute(
+                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?)"
+                    % o["name"], (res.hid, res.pid, res.tid, o["opcnt"],
+                      o["factor"], o["elapsed"], agg, opavg, opmin, opmax))
+
             elif oper.optype(o["name"]) == oper.TYPE_IO:
                 # Aggregated throughput
                 total_elapsed = num.sum(o["elapsed"])
@@ -147,7 +163,7 @@ class Database:
                 opmax = num.max(tlist)
                 opstd = num.std(tlist)
 
-                self.create_table(o["name"], self.FORMATS['io'], overwrite)
+                self.create_table(o["name"], self.FORMATS["io"], overwrite)
                 self.cur.execute(
                     "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
                     % o["name"], (res.hid, res.pid, res.tid, o["fsize"], 

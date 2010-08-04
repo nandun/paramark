@@ -91,9 +91,11 @@ class Options(BaseOptions):
         elif opt == "dryrun": return bool(eval(str(val)))
         elif opt == "nthreads": return int(val)
         elif opt == "confirm": return bool(val)
-        elif opt == "opcnt": return int(val)
-        elif opt == "factor": return int(val)
         elif opt == 'wdir': return os.path.abspath(val)
+        elif opt == "opcnt":
+            return map(lambda v:int(v), val.split(','))
+        elif opt == "factor":
+            return map(lambda v:int(v), val.split(','))
         elif opt == "fsize":
             return map(lambda v:parse_datasize(v), val.split(','))
         elif opt == "bsize":
@@ -162,9 +164,6 @@ confirm = True
 
 # Verbosity level (0-5)
 verbosity = 0
-
-# Dryrun, do nothing
-dryrun = False
 
 # Log directory of benchmarking results
 # Generate a random log directory when logdir is not set

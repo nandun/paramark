@@ -39,7 +39,9 @@ from oper import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
 LOGSCALE_THRESHOLD = 1000
 
-REPORT_VERBOSE_LEVEL = 2
+VERBOSE = 2
+VERBOSE_MORE = VERBOSE + 1
+VERBOSE_ALL = VERBOSE_MORE + 1
 
 class Report():
     def __init__(self, datadir):
@@ -316,7 +318,7 @@ class HTMLReport(Report):
         htmlFile.close()
 
     def runtime_section(self, doc, body):
-        verbose("Generating \"Runtime Summary\" ...", REPORT_VERBOSE_LEVEL)
+        verbose(" writing \"Runtime Summary\" ...", VERBOSE_MORE)
         body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
         runtime = self.runtime_stats()
         rows = []
@@ -346,10 +348,11 @@ class HTMLReport(Report):
         cssFile.close()
         
     def write(self):
+        message("Generating HTML report to %s ... " % self.rdir)
         self.start = timer2()
         self.css_file()
         self.main_page()
-        message("Report generated in %s" % self.rdir)
+        message("Done!")
 
 ##########################################################################
 # Default configure string
