@@ -25,8 +25,7 @@ import sys
 
 __all__ = ["message", "warning", "verbose", "fatal"]
 
-global_verbose_level = 0
-DEBUG = False
+verbosity = 0
 
 def message(s):
     sys.stdout.flush()
@@ -40,7 +39,7 @@ def debug(s):
     sys.stdout.write("Debug: %s\n" % s)
 
 def verbose(s, level=0):
-    if global_verbose_level >= level:
+    if verbosity >= level:
         sys.stdout.flush()
         sys.stdout.write("%s\n" % s)
 

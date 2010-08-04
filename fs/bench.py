@@ -30,7 +30,6 @@ import pwd
 import cPickle
 import StringIO
 import threading
-from __builtin__ import open as _open # for open()
 
 import version
 from modules.verbose import *
@@ -41,7 +40,9 @@ from load import *
 import oper
 from data import Database as FSDatabase
 
-VERBOSE = 2
+VERBOSE = 1
+VERBOSE_MORE = VERBOSE + 1
+VERBOSE_ALL = VERBOSE_MORE + 1
 
 __all__ = ['Bench']
 
@@ -93,7 +94,7 @@ class Bench:
         for t in self.threads: t.start()
         for t in self.threads: t.join()
 
-        if self.cfg.dryrun: message("Dryrun, nothing executed.\n")
+        if self.cfg.dryrun: message("Dryrun, nothing was executed.\n")
         
         self.end = timer()
         
@@ -125,10 +126,9 @@ class Bench:
         logdir = os.path.abspath(self.cfg.logdir)
         
         # Save used configuration file
+        verbose("Saving configurations to %s/fsbench.conf ..." % logdir,
+            VERBOSE)
         self.opts.save_conf("%s/fsbench.conf" % logdir)
-        if self.cfg.verbosity >= 1:
-            self.vs("applied configurations saved to %s/fsbench.conf\n" 
-                % logdir)
         
         # Save results
         if self.cfg.nolog:
@@ -146,14 +146,12 @@ class Bench:
             for t in self.threads:
                 self.db.insert_rawdata(t.get_res())
         self.db.close()
-
-        if self.cfg.verbosity >= 1:
-            self.vs("raw benchmark data saved to %s/fsbench.db\n" % logdir)
+        
+        verbose("Saving benchmark data to %s/fsbench.db ..." % logdir, 
+            VERBOSE)
     
     def report(self, path=None):
         if self.cfg.dryrun or self.cfg.noreport: return
-
-        message("Generating report ...")
 
         if self.cfg.quickreport:
             self.quick_report()
@@ -174,7 +172,6 @@ class Bench:
             self.report = report.HTMLReport(logdir)
         self.report.write()
          
-    
     def send_res(self):
         # Packing string without newlines
         res = cPickle.dumps([t.get_res() for t in self.threads], 0)
@@ -281,9 +278,7 @@ class Bench:
             f.write("Aggs: " + ",".join(io_aggs) + "\n")
         
         f.close() 
-        sys.stdout.write("Report generated in %s/report.txt\n" % self.cfg.logdir)
         
-
 class ThreadSync:
     def __init__(self, nthreads):
         self.n = nthreads
@@ -317,29 +312,6 @@ class BenchThread(threading.Thread):
         self.wdir, self.load = loader.generate(self.tid)
 
         self.synctime = []
-
-    def _meta_load(self):
-        self.load.meta_dirs = []
-        self.load.meta_files = []
-        queue = [ copy.deepcopy(self.load.rdir) ]
-        i = l = 0
-        while i < self.cfg.opcnt:
-            if i % self.cfg.factor == 0:
-                parent = queue.pop(0)
-                l += 1
-            child = os.path.normpath("%s/L%d-%d" % (parent, l, i))
-            self.load.meta_dirs.append(child)
-            self.load.meta_files.append("%s/%d-%d.file" % (child, l, i))
-            queue.append(child)
-            i += 1
-        
-        self.load.mkdir = self.load.meta_dirs
-        dirs = list(self.load.meta_dirs)
-        dirs.reverse()
-        self.load.rmdir = dirs
-        for o in ["creat", "access", "open", "open_close", "stat_exist",
-            "stat_non", "utime", "chmod", "rename", "unlink"]:
-            self.load.set(o, self.load.meta_files)
 
     def run(self):
         if not self.dryrun: os.makedirs(self.wdir)

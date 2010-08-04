@@ -29,8 +29,9 @@ import StringIO
 from verbose import *
 from common import *
 
-OPTS_VERBOSE_NORMAL = 1
-OPTS_VERBOSE_DEBUG = 5
+VERBOSE = 3
+VERBOSE_MORE = VERBOSE + 1
+VEROBSE_ALL = VERBOSE_MORE + 1
 
 class Options:
     def __init__(self, argv=None):
@@ -124,7 +125,7 @@ class Options:
         
         if loaded_files is not None:
             verbose("Successfull load configurations from %s." %
-                    ", ".join(loaded_files), OPTS_VERBOSE_NORMAL)
+                    ", ".join(loaded_files), VERBOSE)
 
     def override_conf(self):
         """
@@ -154,8 +155,8 @@ class Options:
             if self.vals.override:
                 for o, v in self.cfgParser.items(sec):
                     if self.has(o):
-                        verbose("Override %s.%s=%s -> %s" %
-                            (sec, o, v, self.get(o)), OPTS_VERBOSE_DEBUG)
+                        verbose(" %s.%s=%s overrided to %s" %
+                            (sec, o, v, self.get(o)), VERBOSE_MORE)
                         self.cfgParser.set(sec, o, str(self.get(o)))
             self.set_subval(sec, self.cfgParser.items(sec))
     
@@ -182,7 +183,7 @@ class Options:
             sys.exit(0)
         
         import verbose
-        verbose.global_verbose_level = self.vals.verbosity
+        verbose.verbosity = self.vals.verbosity
         
         self.parse_conf()
  

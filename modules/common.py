@@ -116,14 +116,14 @@ def smart_makedirs(path, confirm=True):
                 if ans == 'n':
                     sys.stderr.write("Aborting ...\n")
                     sys.exit(1)
-                elif ans == "" or ans == 'y': pass
+                elif ans == "" or ans == 'y':
+                    message("Overwriting \"%s\" ..." % os.path.abspath(path))
                 else: return smart_makedirs(ans, confirm)
             else:
                 message("Overwriting \"%s\" ..." % os.path.abspath(path))
         else:
-            sys.stderr.write("failed to create %s, %s\n" % \
+            fatal("failed to create %s: %s\n" % 
                 (path, os.strerror(err.errno)))
-            sys.exit(1)
     return path
 
 def string_hash(str):
