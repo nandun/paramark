@@ -36,6 +36,11 @@ class BenchLoad:
 
     def generate(self, tid):
         self.threaddir = '%s-%d' % (self.dir, tid)
+        load = self.generate_io(tid)
+        load.extend(self.generate_meta(tid))
+        return self.threaddir, load
+
+    def generate_io(self, tid):
         load = []
         for o in self.cfg.io:
             for fs in self.cfg.fsize:
@@ -61,18 +66,50 @@ class BenchLoad:
                             f=self.get_io_load(tid, fs, bs),
                             fsize=fs, bsize=bs,
                             flags=self.cfg.read.flags,
+                            mode=self.cfg.read.mode,
                             dryrun=self.cfg.dryrun)
                     elif o == 'reread':
                         op = oper.reread(
                             f=self.get_io_load(tid, fs, bs),
                             fsize=fs, bsize=bs,
-                            flags=self.cfg.read.flags,
+                            flags=self.cfg.reread.flags,
+                            mode=self.cfg.reread.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'fread':
+                        op = oper.fread(
+                            f=self.get_io_load(tid, fs, bs),
+                            fsize=fs, bsize=bs,
+                            mode=self.cfg.fread.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'freread':
+                        op = oper.freread(
+                            f=self.get_io_load(tid, fs, bs),
+                            fsize=fs, bsize=bs,
+                            mode=self.cfg.freread.mode,
+                            bufsize=self.cfg.freread.bufsize,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'fwrite':
+                        op = oper.fwrite(
+                            f=self.get_io_load(tid, fs, bs),
+                            fsize=fs, bsize=bs,
+                            mode=self.cfg.fwrite.mode,
+                            bufsize=self.cfg.fwrite.bufsize,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'frewrite':
+                        op = oper.frewrite(
+                            f=self.get_io_load(tid, fs, bs),
+                            fsize=fs, bsize=bs,
+                            mode=self.cfg.frewrite.mode,
+                            bufsize=self.cfg.frewrite.bufsize,
                             dryrun=self.cfg.dryrun)
                     else:
                         warning("unknow I/O operation \"%s\", ignored" % o)
                         continue
                     load.append(op)
- 
+        return load
+    
+    def generate_meta(self, tid):
+        load = []
         for o in self.cfg.meta:
             for ct in self.cfg.opcnt:
                 for ft in self.cfg.factor:
@@ -87,11 +124,70 @@ class BenchLoad:
                         op = oper.rmdir(
                             files=files, opcnt=ct, factor=ft,
                             dryrun=self.cfg.dryrun)
+                    elif o == 'creat':
+                        op = oper.creat(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            flags=self.cfg.creat.flags,
+                            mode=self.cfg.creat.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'access':
+                        op = oper.access(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            mode=self.cfg.access.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'open':
+                        op = oper.open(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            flags=self.cfg.open.flags,
+                            mode=self.cfg.open.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'open_close':
+                        op = oper.open_close(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            flags=self.cfg.open_close.flags,
+                            mode=self.cfg.open_close.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'stat_exist':
+                        op = oper.stat_exist(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'stat_non':
+                        op = oper.stat_non(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'utime':
+                        op = oper.utime(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            times=self.cfg.utime.times,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'chmod':
+                        op = oper.chmod(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            mode=self.cfg.chmod.mode,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'rename':
+                        op = oper.rename(
+                            files=self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            dryrun=self.cfg.dryrun)
+                    elif o == 'unlink':
+                        op = oper.unlink(
+                            files = self.get_meta_load(tid, ct, ft)[1],
+                            opcnt=ct, factor=ft,
+                            dryrun=self.cfg.dryrun)
                     else:
                         warning("unknow meta operation \"%s\", ignored" % o)
                         continue
                     load.append(op)
-        return self.threaddir, load
+        return load
 
     def get_io_load(self, tid, fsize, bsize):
         return '%s/io-t%d-%d-%d.tmp' % (self.threaddir, tid, fsize, bsize)

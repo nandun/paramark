@@ -92,6 +92,9 @@ class Options(BaseOptions):
         elif opt == "nthreads": return int(val)
         elif opt == "confirm": return bool(val)
         elif opt == 'wdir': return os.path.abspath(val)
+        elif opt == 'logdir':
+            if val == "": return None
+            else: return os.path.abspath(val)
         elif opt == "opcnt":
             return map(lambda v:int(v), val.split(','))
         elif opt == "factor":
@@ -103,7 +106,10 @@ class Options(BaseOptions):
         elif opt == "flags":
             if val.startswith("O_"): return eval(val)
             else: return str(val)
-        elif opt == "mode": return eval(val)
+        elif opt == "mode":
+            if val.startswith("S_") or val.startswith("F_"): 
+                return eval(val)
+            else: return str(val)
         elif opt == "meta":
             meta = []
             for m in val.split(','):
@@ -130,6 +136,8 @@ class Options(BaseOptions):
                     if o not in _io: _io.append(o)
                 io = _io
             return io
+        elif opt == "times":
+            if val == "": return None
         return val
         
 ##########################################################################
@@ -175,7 +183,7 @@ logdir =
 meta = 
 
 # I/O operations to be performed
-# e.g., io = read,reread,write,rewrite,fread,freread,fwrite,frewrite,offsetread,offsetwrite
+# e.g., io = read,reread,write,rewrite,fread,freread,fwrite,frewrite
 io = 
 
 # Overwrite following local settings
@@ -219,25 +227,27 @@ factor = 16
 
 [creat]
 opcnt = 0
+factor = 16
 flags = O_CREAT | O_WRONLY | O_TRUNC 
 mode = S_IRUSR | S_IWUSR
-factor = 16
 
 [access]
 opcnt = 0
 # F_OK, R_OK, W_OK, X_OK or their inclusive OR
-mode = F_OK
 factor = 16
+mode = F_OK
 
 [open]
 opcnt = 0
-flags = O_RDONLY
 factor = 16
+flags = O_RDONLY
+mode = S_IRUSR
 
 [open_close]
 opcnt = 0
-flags = O_RDONLY
 factor = 16
+flags = O_RDONLY
+mode = S_IRUSR
 
 [stat_exist]
 opcnt = 0
@@ -249,13 +259,13 @@ factor = 16
 
 [utime]
 opcnt = 0
-times = None
 factor = 16
+times =
 
 [chmod]
 opcnt = 0
-chmod = S_IEXEC
 factor = 16
+mode = S_IEXEC
 
 [rename]
 opcnt = 0
@@ -294,33 +304,22 @@ fsync = False
 fsize = 0
 bsize = 0
 # 'r', 'w', 'a', 'b', '+', or their combinations
-flags = r
+mode = r
 
 [freread]
 fsize = 0
 bsize = 0
-flags = r
+mode = r
 
 [fwrite]
 fsize = 0
 bsize = 0
-flags = w
+mode = w
 fsync = False
 
 [frewrite]
 fsize = 0
 bsize = 0
-flags = w
-fsync = False
-
-[offsetread]
-fsize = 0
-bsize = 0
-flags = O_RDONLY
-
-[offsetwrite]
-fsize = 0
-bsize = 0
-flags = O_CREAT | O_RDWR
+mode = w
 fsync = False
 """
