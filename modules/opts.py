@@ -31,7 +31,7 @@ from common import *
 
 VERBOSE = 3
 VERBOSE_MORE = VERBOSE + 1
-VEROBSE_ALL = VERBOSE_MORE + 1
+VERBOSE_ALL = VERBOSE_MORE + 1
 
 class Options:
     def __init__(self, argv=None):
@@ -156,7 +156,7 @@ class Options:
                 for o, v in self.cfgParser.items(sec):
                     if self.has(o):
                         verbose(" %s.%s=%s overrided to %s" %
-                            (sec, o, v, self.get(o)), VERBOSE_MORE)
+                            (sec, o, v, self.get(o)), VERBOSE_ALL)
                         self.cfgParser.set(sec, o, str(self.get(o)))
             self.set_subval(sec, self.cfgParser.items(sec))
     

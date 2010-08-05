@@ -21,11 +21,10 @@
 
 import os
 import stat
+from __builtin__ import open as _open
 
 from modules.verbose import *
 from modules.common import *
-
-__all___ = ["write"]
 
 VERBOSE = 1
 VERBOSE_MORE = VERBOSE + 1
@@ -36,8 +35,8 @@ TYPE_IO = 0
 OPS_META = ["mkdir", "creat", "access", "open", "open_close", "stat_exist", 
     "stat_non", "utime", "chmod", "rename", "unlink", "rmdir"]
 
-OPS_IO = ["read", "reread", "write", "rewrite", "fread", "freread",
-    "fwrite", "frewrite", "offsetread", "offsetwrite"]
+OPS_IO = ["write", "rewrite", "read", "reread", "fwrite", "frewrite", 
+    "fread", "freread"]
 
 DEFAULT_FSIZE = 1024
 DEFAULT_BLKSIZE = 1024
@@ -60,6 +59,7 @@ class read:
         self.fsize = fsize
         self.bsize = bsize
         self.flags = flags
+        self.mode = mode
         self.dryrun = dryrun
         
         self.opcnt = 0
@@ -324,26 +324,26 @@ class fread:
         if self.fsize % self.bsize != 0: cnt += 1
         self.opcnt = cnt
 
-        verbose(" fread: os.fdopen(%s, %s, %d)" %
+        verbose(" fread: open(%s, %s, %d)" %
             (self.f, self.mode, self.bufsize), VERBOSE_MORE)
         s = timer()
-        fd = os.fdopen(self.f, self.mode, self.bufsize)
+        f = _open(self.f, self.mode, self.bufsize)
         self.elapsed.append(timer() - s)
 
-        verbose(" fread: %d.read(%s) * %d" %
-            (fd, self.bsize, self.fsize / self.bsize), VERBOSE)
+        verbose(" fread: f.read(%s) * %d" %
+            (self.bsize, self.fsize / self.bsize), VERBOSE)
         while cnt > 0:
             s = timer()
-            res = fd.read(self.bsize)
+            res = f.read(self.bsize)
             self.elapsed.append(timer() - s)
             if len(res) != self.bsize:
                 warning("fread bytes (%d) != bsize (%d)"
                     % (len(res), self.bsize))
             cnt -= 1
 
-        verbose(" fread: %d.close()" % fd, VERBOSE_MORE)
+        verbose(" fread: f.close()", VERBOSE_MORE)
         s = timer()
-        fd.close()
+        f.close()
         self.elapsed.append(timer() - s)
     
     def get(self):
@@ -377,21 +377,27 @@ class freread:
         cnt = int(self.fsize / self.bsize)
         if self.fsize % self.bsize != 0: cnt += 1
         self.opcnt = cnt
+        
+        verbose(" freread: open(%s, %s, %d)" %
+            (self.f, self.mode, self.bufsize), VERBOSE_MORE)
+        s = timer()
+        f = _open(self.f, self.mode, self.bufsize)
+        self.elapsed.append(timer() - s)
 
-        verbose(" freread: %d.read(%d) * %d" %
-            (fd, self.bsize, self.fsize / self.bsize), VERBOSE)
+        verbose(" freread: f.read(%d) * %d" %
+            (self.bsize, self.fsize / self.bsize), VERBOSE)
         while cnt > 0:
             s = timer()
-            res = fd.read(self.bsize)
+            res = f.read(self.bsize)
             self.elapsed.append(timer() - s)
             if len(res) != self.bsize:
                 warning("freread bytes (%d) != bsize (%d)"
                     % (len(res), self.bsize))
             cnt -= 1
         
-        verbose(" freread: %d.close()" % fd, VERBOSE_MORE)
+        verbose(" freread: f.close()", VERBOSE_MORE)
         s = timer()
-        fd.close()
+        f.close()
         self.elapsed.append(timer() - s)
     
     def get(self):
@@ -431,19 +437,16 @@ class fwrite:
             self.fsize = self.bsize * cnt
         self.opcnt = cnt
         
-        verbose(" fwrite: os.fdopen(%s, %d, %d)" %
+        verbose(" fwrite: open(%s, %s, %d)" %
             (self.f, self.mode, self.bufsize), VERBOSE_MORE)
         s = timer()
-        f = os.fdopen(self.f, self.mode, self.bufsize)
+        f = _open(self.f, self.mode, self.bufsize)
         self.elapsed.append(timer() - s)
 
         while cnt > 0:
             s = timer()
-            res = f.write(block)
+            f.write(block)
             self.elapsed.append(timer() - s)
-            if res != self.bsize:
-                warning("written bytes (%d) != bsize (%d)"
-                    % (res, self.bsize))
             cnt -= 1
 
         if self.fsync:
@@ -464,7 +467,6 @@ class fwrite:
         out["file"] = self.f
         out["fsize"] = self.fsize
         out["bsize"] = self.bsize
-        out["flags"] = self.flags
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed
@@ -497,19 +499,16 @@ class frewrite:
             self.fsize = self.bsize * cnt
         self.opcnt = cnt
         
-        verbose(" frewrite: os.fdopen(%s, %d, %d)" %
+        verbose(" frewrite: open(%s, %s, %d)" %
             (self.f, self.mode, self.bufsize), VERBOSE_MORE)
         s = timer()
-        f = os.fdopen(self.f, self.mode, self.bufsize)
+        f = _open(self.f, self.mode, self.bufsize)
         self.elapsed.append(timer() - s)
 
         while cnt > 0:
             s = timer()
-            res = f.write(block)
+            f.write(block)
             self.elapsed.append(timer() - s)
-            if res != self.bsize:
-                warning("written bytes (%d) != bsize (%d)"
-                    % (res, self.bsize))
             cnt -= 1
 
         if self.fsync:
@@ -530,7 +529,6 @@ class frewrite:
         out["file"] = self.f
         out["fsize"] = self.fsize
         out["bsize"] = self.bsize
-        out["flags"] = self.flags
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed

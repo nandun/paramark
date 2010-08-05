@@ -48,7 +48,7 @@ class Database:
         self.FORMATS['meta'] = [('hid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('opcnt', 'INTEGER'), ('factor', 'INTEGER'),
             ('elapsed', 'BLOB'), ('agg', 'REAL'), ('opavg', 'REAL'),
-            ('opmin', 'REAL'), ('opmax', 'REAL')]
+            ('opmin', 'REAL'), ('opmax', 'REAL'), ('opstd', 'REAL')]
         self.FORMATS['aggdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
             ('min','REAL'), ('max','REAL'), ('avg','REAL'), ('agg','REAL'), 
@@ -98,6 +98,10 @@ class Database:
             tables = self.tables
         for table in tables:
             self.cur.execute("DROP TABLE IF EXISTS %s" % table)
+
+    def get_tables(self):
+        self.cur.execute("SELECT name FROM sqlite_master where type='table'")
+        return map(lambda (v,):str(v), self.cur.fetchall())
             
     # Data Tables
     def _ins_aggdata(self, table, data):
@@ -146,9 +150,10 @@ class Database:
 
                 self.create_table(o["name"], self.FORMATS["meta"], overwrite)
                 self.cur.execute(
-                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?)"
+                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?)"
                     % o["name"], (res.hid, res.pid, res.tid, o["opcnt"],
-                      o["factor"], o["elapsed"], agg, opavg, opmin, opmax))
+                      o["factor"], o["elapsed"], agg, opavg, opmin, 
+                      opmax, opstd))
 
             elif oper.optype(o["name"]) == oper.TYPE_IO:
                 # Aggregated throughput

@@ -102,7 +102,7 @@ class Bench:
         self.runtime.end = "%r" % self.end
 
     def save(self):
-        if self.cfg.dryrun or self.cfg.quickreport: return
+        if self.cfg.dryrun: return
     
         if self.cfg.gxpmode:
             # Gather results
@@ -153,10 +153,6 @@ class Bench:
     def report(self, path=None):
         if self.cfg.dryrun or self.cfg.noreport: return
 
-        if self.cfg.quickreport:
-            self.quick_report()
-            return
-        
         if self.cfg.gxpmode and self.gxp.rank != 0:
             return
         
@@ -186,99 +182,6 @@ class Bench:
     def vs(self, msg):
         sys.stderr.write(msg)
 
-    def quick_report(self):
-        elapsed = {}
-        for t in self.threads:
-            res = t.get_res()
-            _, sync_prev_time = res.synctime.pop(0)
-            for sync_name, sync_time in res.synctime:
-                if elapsed.has_key(sync_name):
-                    elapsed[sync_name] += sync_time - sync_prev_time
-                else:
-                    elapsed[sync_name] = sync_time - sync_prev_time
-                sync_prev_time = sync_time
-        
-        if self.cfg.gxpmode:
-            # Gather results
-            # self.send_res()
-                #for k, v in elapsed:
-                #    elapsed[k] = v / len(res.synctime)
-            res = cPickle.dumps(elapsed, 0)
-            self.gxp.wp.write('|'.join(res.split('\n')))
-            self.gxp.wp.write("\n")
-            self.gxp.wp.flush()
-            if self.gxp.rank == 0:
-                reslist = []
-                for i in range(0, self.gxp.size):
-                    reslist.append(self.recv_res())
-            else:
-                return
-        else:
-            reslist = [elapsed]
-       
-        io_opers = []
-        io_aggs = []
-        meta_opers = []
-        meta_aggs = []
-        elapsed = {}
-        n_hosts = len(reslist)
-        for res in reslist:
-            for sync_name, sync_time in res.items():
-                if elapsed.has_key(sync_name):
-                    elapsed[sync_name] += sync_time
-                else:
-                    elapsed[sync_name] = sync_time
-       
-        for k in elapsed.keys():
-            sync_time = elapsed[k] / (self.cfg.nthreads * n_hosts)
-            if k in OPS_META:
-                meta_opers.append(k)
-                meta_aggs.append(self.cfg.opcnt * self.cfg.nthreads 
-                    * n_hosts / sync_time)
-            elif k in oper.OPS_IO:
-                io_opers.append(k)
-                io_aggs.append(self.cfg.fsize * self.cfg.nthreads * n_hosts
-                    / sync_time)
-        
-        # Write report
-        if self.cfg.logdir is None:
-            self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
-                   (self.runtime.user, time.strftime("%j-%H-%M-%S")))
-        
-        if self.cfg.gxpmode:
-            self.cfg.confirm = False
-        self.cfg.logdir = smart_makedirs(self.cfg.logdir,
-            self.cfg.confirm)
-        
-        f = _open("%s/report.txt" % self.cfg.logdir, "w")
-        f.write("ParaMark: v%s, %s\n" 
-            % (self.runtime.version, self.runtime.date))
-        f.write("Platform: %s\n" % self.runtime.platform)
-        f.write("Target: %s (%s)\n" % (self.runtime.wdir,
-            self.runtime.mountpoint))
-        f.write("Time: %s --- %s (%.2f seconds)\n" 
-            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(self.runtime.start)))),
-              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(self.runtime.end)))),
-              (eval(self.runtime.end) - eval(self.runtime.start))))
-        f.write("User: %s (%s)\n" % (self.runtime.user, self.runtime.uid))
-        f.write("Command: %s\n" % self.runtime.cmdline)
-
-        meta_aggs = map(lambda x:"%.3f"%x, meta_aggs)
-        io_aggs = map(lambda x:"%.3f"%(x/1048576), io_aggs)
-
-        if len(meta_aggs) > 0:
-            f.write("\nMetadata Performance (ops/sec)\n")
-            f.write("Oper: " + ",".join(meta_opers) + "\n")
-            f.write("Aggs: " + ",".join(meta_aggs) + "\n")
-        if len(io_aggs) > 0:
-            f.write("\nI/O Performance (MB/sec)\n")
-            f.write("Oper: " + ",".join(io_opers) + "\n")
-            f.write("Aggs: " + ",".join(io_aggs) + "\n")
-        
-        f.close() 
-        
 class ThreadSync:
     def __init__(self, nthreads):
         self.n = nthreads

@@ -80,6 +80,7 @@ class BenchLoad:
                             f=self.get_io_load(tid, fs, bs),
                             fsize=fs, bsize=bs,
                             mode=self.cfg.fread.mode,
+                            bufsize=self.cfg.fread.bufsize,
                             dryrun=self.cfg.dryrun)
                     elif o == 'freread':
                         op = oper.freread(
@@ -94,6 +95,7 @@ class BenchLoad:
                             fsize=fs, bsize=bs,
                             mode=self.cfg.fwrite.mode,
                             bufsize=self.cfg.fwrite.bufsize,
+                            fsync=self.cfg.fwrite.fsync,
                             dryrun=self.cfg.dryrun)
                     elif o == 'frewrite':
                         op = oper.frewrite(
@@ -101,6 +103,7 @@ class BenchLoad:
                             fsize=fs, bsize=bs,
                             mode=self.cfg.frewrite.mode,
                             bufsize=self.cfg.frewrite.bufsize,
+                            fsync=self.cfg.frewrite.fsync,
                             dryrun=self.cfg.dryrun)
                     else:
                         warning("unknow I/O operation \"%s\", ignored" % o)
@@ -119,7 +122,7 @@ class BenchLoad:
                             opcnt=ct, factor=ft,
                             dryrun=self.cfg.dryrun)
                     elif o == 'rmdir':
-                        files = self.get_meta_load(tid, ct, ft)[0]
+                        files = list(self.get_meta_load(tid, ct, ft)[0])
                         files.reverse()
                         op = oper.rmdir(
                             files=files, opcnt=ct, factor=ft,
@@ -204,7 +207,8 @@ class BenchLoad:
                 if i % factor == 0:
                     parent = queue.pop(0)
                     l += 1
-                child = os.path.normpath("%s/L%d-%d" % (parent, l, i))
+                child = os.path.normpath("%s/L%d-%d-%d-%d" 
+                    % (parent, l, i, opcnt, factor))
                 dirs.append(child)
                 files.append("%s/%d-%d.tmp" % (child, l, i))
                 queue.append(child)
