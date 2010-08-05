@@ -21,14 +21,15 @@
 
 import os
 import stat
-from __builtin__ import open as _open # for open()
 
 from modules.verbose import *
 from modules.common import *
 
 __all___ = ["write"]
 
-# Internal Constants
+VERBOSE = 1
+VERBOSE_MORE = VERBOSE + 1
+
 TYPE_META = 1
 TYPE_IO = 0
 
@@ -41,8 +42,9 @@ OPS_IO = ["read", "reread", "write", "rewrite", "fread", "freread",
 DEFAULT_FSIZE = 1024
 DEFAULT_BLKSIZE = 1024
 
-VERBOSE = 1
-VERBOSE_MORE = VERBOSE + 1
+DEFAULT_OPCNT = 100
+DEFAULT_FACTOR = 16
+
 
 # Utilities
 def optype(opname):
@@ -52,7 +54,7 @@ def optype(opname):
 # I/O Primitives
 class read:
     def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE, 
-        flags=os.O_RDONLY, dryrun=False):
+        flags=os.O_RDONLY, mode=stat.S_IRUSR, dryrun=False):
         self.name = "read"
         self.f = f
         self.fsize = fsize
@@ -70,7 +72,6 @@ class read:
             return
 
         cnt = int(self.fsize / self.bsize)
-        
         if self.fsize % self.bsize != 0: cnt += 1
         self.opcnt = cnt
 
@@ -107,7 +108,7 @@ class read:
 
 class reread:
     def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE, 
-        flags=os.O_RDONLY, dryrun=False):
+        flags=os.O_RDONLY, mode=stat.S_IRUSR, dryrun=False):
         self.name = "reread"
         self.f = f
         self.fsize = fsize
@@ -221,7 +222,7 @@ class write:
 
     def get(self):
         out = {}
-        out["name"] = "write"
+        out["name"] = self.name
         out["file"] = self.f
         out["fsize"] = self.fsize
         out["bsize"] = self.bsize
@@ -252,7 +253,6 @@ class rewrite:
             verbose(" rewrite: os.write(%s, %d) * %d" %
                 (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
             return
-
 
         blk = '1' * self.bsize
         cnt = int(self.fsize / self.bsize)
@@ -302,9 +302,244 @@ class rewrite:
         out["elapsed"] = self.elapsed
         return out
 
+class fread:
+    def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE,
+        mode='r', bufsize=-1, dryrun=False):
+        self.name = 'fread'
+        self.f = f
+        self.fsize = fsize
+        self.bsize = bsize
+        self.mode = mode
+        self.bufsize = bufsize
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        if self.dryrun:
+            verbose(" fread: file.read(%s, %d) * %d" %
+                (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
+            return
+
+        cnt = int(self.fsize / self.bsize)
+        if self.fsize % self.bsize != 0: cnt += 1
+        self.opcnt = cnt
+
+        verbose(" fread: os.fdopen(%s, %s, %d)" %
+            (self.f, self.mode, self.bufsize), VERBOSE_MORE)
+        s = timer()
+        fd = os.fdopen(self.f, self.mode, self.bufsize)
+        self.elapsed.append(timer() - s)
+
+        verbose(" fread: %d.read(%s) * %d" %
+            (fd, self.bsize, self.fsize / self.bsize), VERBOSE)
+        while cnt > 0:
+            s = timer()
+            res = fd.read(self.bsize)
+            self.elapsed.append(timer() - s)
+            if len(res) != self.bsize:
+                warning("fread bytes (%d) != bsize (%d)"
+                    % (len(res), self.bsize))
+            cnt -= 1
+
+        verbose(" fread: %d.close()" % fd, VERBOSE_MORE)
+        s = timer()
+        fd.close()
+        self.elapsed.append(timer() - s)
+    
+    def get(self):
+        out = {}
+        out["name"] = self.name
+        out["file"] = self.f
+        out["fsize"] = self.fsize
+        out["bsize"] = self.bsize
+        out["mode"] = self.mode
+        out["elapsed"] = self.elapsed
+        return out
+
+class freread:
+    def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE,
+        mode='r', bufsize=-1, dryrun=False):
+        self.name = 'freread'
+        self.f = f
+        self.fsize = fsize
+        self.bsize = bsize
+        self.mode = mode
+        self.bufsize = bufsize
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        if self.dryrun:
+            verbose(" freread: file.read(%s, %d) * %d" %
+                (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
+            return
+
+        cnt = int(self.fsize / self.bsize)
+        if self.fsize % self.bsize != 0: cnt += 1
+        self.opcnt = cnt
+
+        verbose(" freread: %d.read(%d) * %d" %
+            (fd, self.bsize, self.fsize / self.bsize), VERBOSE)
+        while cnt > 0:
+            s = timer()
+            res = fd.read(self.bsize)
+            self.elapsed.append(timer() - s)
+            if len(res) != self.bsize:
+                warning("freread bytes (%d) != bsize (%d)"
+                    % (len(res), self.bsize))
+            cnt -= 1
+        
+        verbose(" freread: %d.close()" % fd, VERBOSE_MORE)
+        s = timer()
+        fd.close()
+        self.elapsed.append(timer() - s)
+    
+    def get(self):
+        out = {}
+        out["name"] = self.name
+        out["file"] = self.f
+        out["fsize"] = self.fsize
+        out["bsize"] = self.bsize
+        out["mode"] = self.mode
+        out["elapsed"] = self.elapsed
+        return out
+
+class fwrite:
+    def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE,
+        mode='w', bufsize=-1, fsync=False, dryrun=False):
+        self.name = 'fwrite'
+        self.f = f
+        self.fsize = fsize
+        self.bsize = bsize
+        self.mode = mode
+        self.bufsize = bufsize
+        self.fsync = fsync
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        if self.dryrun:
+            verbose(" fwrite: file.write(%s, %d) * %d" %
+                (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
+            return
+
+        block = '2' * self.bsize
+        cnt = int(self.fsize / self.bsize)
+        # Since we write in block unit, adjust actually written fsize
+        if self.fsize % self.bsize != 0:
+            cnt += 1
+            self.fsize = self.bsize * cnt
+        self.opcnt = cnt
+        
+        verbose(" fwrite: os.fdopen(%s, %d, %d)" %
+            (self.f, self.mode, self.bufsize), VERBOSE_MORE)
+        s = timer()
+        f = os.fdopen(self.f, self.mode, self.bufsize)
+        self.elapsed.append(timer() - s)
+
+        while cnt > 0:
+            s = timer()
+            res = f.write(block)
+            self.elapsed.append(timer() - s)
+            if res != self.bsize:
+                warning("written bytes (%d) != bsize (%d)"
+                    % (res, self.bsize))
+            cnt -= 1
+
+        if self.fsync:
+            verbose(" fwrite: f.flush(); os.fsync(%d)" % f.fileno())
+            s = timer()
+            f.flush()
+            os.fsync(f.fileno())
+            self.elapsed.append(timer() - s)
+
+        verbose(" fwrite: f.close()", VERBOSE_MORE)
+        s = timer()
+        f.close()
+        self.elapsed.append(timer() - s)
+    
+    def get(self):
+        out = {}
+        out["name"] = self.name
+        out["file"] = self.f
+        out["fsize"] = self.fsize
+        out["bsize"] = self.bsize
+        out["flags"] = self.flags
+        out["mode"] = self.mode
+        out["fsync"] = self.fsync
+        out["elapsed"] = self.elapsed
+        return out
+
+class frewrite:
+    def __init__(self, f, fsize=DEFAULT_FSIZE, bsize=DEFAULT_BLKSIZE,
+        mode='w', bufsize=-1, fsync=False, dryrun=False):
+        self.name = 'frewrite'
+        self.f = f
+        self.fsize = fsize
+        self.bsize = bsize
+        self.mode = mode
+        self.bufsize = bufsize
+        self.fsync = fsync
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        if self.dryrun:
+            verbose(" frewrite: file.write(%s, %d) * %d" %
+                (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
+            return
+
+        block = '3' * self.bsize
+        cnt = int(self.fsize / self.bsize)
+        # Since we write in block unit, adjust actually written fsize
+        if self.fsize % self.bsize != 0:
+            cnt += 1
+            self.fsize = self.bsize * cnt
+        self.opcnt = cnt
+        
+        verbose(" frewrite: os.fdopen(%s, %d, %d)" %
+            (self.f, self.mode, self.bufsize), VERBOSE_MORE)
+        s = timer()
+        f = os.fdopen(self.f, self.mode, self.bufsize)
+        self.elapsed.append(timer() - s)
+
+        while cnt > 0:
+            s = timer()
+            res = f.write(block)
+            self.elapsed.append(timer() - s)
+            if res != self.bsize:
+                warning("written bytes (%d) != bsize (%d)"
+                    % (res, self.bsize))
+            cnt -= 1
+
+        if self.fsync:
+            verbose(" frewrite: f.flush(); os.fsync(%d)" % f.fileno())
+            s = timer()
+            f.flush()
+            os.fsync(f.fileno())
+            self.elapsed.append(timer() - s)
+
+        verbose(" frewrite: f.close()", VERBOSE_MORE)
+        s = timer()
+        f.close()
+        self.elapsed.append(timer() - s)
+    
+    def get(self):
+        out = {}
+        out["name"] = self.name
+        out["file"] = self.f
+        out["fsize"] = self.fsize
+        out["bsize"] = self.bsize
+        out["flags"] = self.flags
+        out["mode"] = self.mode
+        out["fsync"] = self.fsync
+        out["elapsed"] = self.elapsed
+        return out
+        
 # Metadata Primitives
 class mkdir:
-    def __init__(self, files, opcnt=100, factor=16, dryrun=False):
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        dryrun=False):
         self.name = 'mkdir'
         self.files = files
         self.opcnt = opcnt
@@ -315,7 +550,7 @@ class mkdir:
         self.elapsed = []
 
     def exe(self):
-        verbose(" mkdir: os.mkdir(%d directories)" % len(self.files), VERBOSE)
+        verbose(" mkdir: os.mkdir(%d directories)" % self.opcnt, VERBOSE)
         if self.dryrun: return
         
         for f in self.files:
@@ -328,14 +563,15 @@ class mkdir:
 
     def get(self):
         out = {}
-        out['name'] = 'mkdir'
+        out['name'] = self.name
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
         return out
 
 class rmdir:
-    def __init__(self, files, opcnt=100, factor=16, dryrun=False):
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, 
+        factor=DEFAULT_FACTOR, dryrun=False):
         self.name = 'rmdir'
         self.files = files
         self.opcnt = opcnt
@@ -346,7 +582,7 @@ class rmdir:
         self.elapsed = []
 
     def exe(self):
-        verbose(" rmdir: os.rmdir(%d directories)" % len(self.files), VERBOSE)
+        verbose(" rmdir: os.rmdir(%d directories)" % self.opcnt, VERBOSE)
         if self.dryrun: return
         
         for f in self.files:
@@ -359,7 +595,338 @@ class rmdir:
 
     def get(self):
         out = {}
-        out['name'] = 'rmdir'
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class creat:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR,
+        flags=os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 
+        mode=stat.S_IRUSR | stat.S_IWUSR, dryrun=False):
+        self.name = 'creat'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.flags = flags
+        self.mode = mode
+        self.dryrun = dryrun
+        assert len(self.files) == self.opcnt
+        
+        self.elapsed = []
+    
+    def exe(self):
+        verbose(" creat: os.close(os.open(%d files))" % 
+            len(self.files), VERBOSE)
+        if self.dryrun: return
+
+        for f in self.files:
+            s = timer()
+            os.close(os.open(f, self.flags, self.mode))
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+    
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class access:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        mode=os.F_OK, dryrun=False):
+        self.name = 'access'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.mode = mode
+        self.dryrun = dryrun
+        assert len(self.files) == self.opcnt
+        
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" access: os.access(%d files)" % self.opcnt, VERBOSE)
+        for f in self.files:
+            s = timer()
+            os.access(f, self.mode)
+            self.elapsed.append(timer() - s)
+        
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+    
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class open: # shadows __builtin__.open
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        flags=os.O_RDONLY, mode=stat.S_IRUSR, dryrun=False):
+        self.name = 'open'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.flags = flags
+        self.mode = mode
+        self.dryrun = dryrun
+        assert len(self.files) == self.opcnt
+        
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" open: os.open(%d files)" % self.opcnt, VERBOSE)
+        if self.dryrun: return
+        
+        for f in self.files:
+            s = timer()
+            fd = os.open(f, self.flags, self.mode)
+            self.elapsed.append(timer() - s)
+            os.close(fd)
+        
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class open_close: # shadows __builtin__.open
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        flags=os.O_RDONLY, mode=stat.S_IRUSR, dryrun=False):
+        self.name = 'open_close'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.flags = flags
+        self.mode = mode
+        self.dryrun = dryrun
+        assert len(self.files) == self.opcnt
+        
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" open_close: os.close(os.open(%d files))" % 
+            self.opcnt, VERBOSE)
+        if self.dryrun: return
+        
+        for f in self.files:
+            s = timer()
+            os.close(os.open(f, self.flags, self.mode))
+            self.elapsed.append(timer() - s)
+        
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class stat_exist:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, 
+        factor=DEFAULT_FACTOR, dryrun=False):
+        self.name = 'stat_exist'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.dryrun = dryrun
+
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" stat_exist: os.stat(%d existing files)" % self.opcnt,
+            VERBOSE)
+        if self.dryrun: return
+
+        for f in self.files:
+            s = timer()
+            os.stat(f)
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class stat_non:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, 
+        factor=DEFAULT_FACTOR, dryrun=False):
+        self.name = 'stat_non'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.dryrun = dryrun
+
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" stat_non: os.stat(%d non-existing files)" % self.opcnt,
+            VERBOSE)
+        if self.dryrun: return
+
+        for f in map(lambda f:f+'.non', self.files):
+            s = timer()
+            try: os.stat(f)
+            except OSError: pass
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class utime:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, 
+        factor=DEFAULT_FACTOR, times=None, dryrun=False):
+        self.name = 'utime'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.times = times
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" utime: os.utime(%d files, %s)" % 
+            (self.opcnt, self.times), VERBOSE)
+        if self.dryrun: return
+
+        for f in self.files:
+            s = timer()
+            os.utime(f, self.times)
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class chmod:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, 
+        factor=DEFAULT_FACTOR, mode=stat.S_IEXEC, dryrun=False):
+        self.name = 'chmod'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.mode = mode
+        self.dryrun = dryrun
+        self.elapsed = []
+   
+    def exe(self):
+        verbose(" chmod: os.chmod(%d files, 0x%x)" % 
+            (self.opcnt, self.mode), VERBOSE)
+        if self.dryrun: return
+        
+        for f in self.files:
+            s = timer()
+            os.chmod(f, self.mode)
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class rename:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        dryrun=False):
+        self.name = 'rename'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" rename: os.rename(%d files)" % self.opcnt, VERBOSE)
+        if self.dryrun: return
+
+        fromtos = map(lambda f:(f, f+".to"), self.files)
+
+        for f, t in fromtos:
+            s = timer()
+            os.rename(f, t)
+            self.elapsed.append(timer() - s)
+
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+            
+            # rename back
+            for f, t in fromtos: os.rename(t, f)
+    
+    def get(self):
+        out = {}
+        out['name'] = self.name
+        out['opcnt'] = self.opcnt
+        out['factor'] = self.factor
+        out['elapsed'] = self.elapsed
+        return out
+
+class unlink:
+    def __init__(self, files, opcnt=DEFAULT_OPCNT, factor=DEFAULT_FACTOR, 
+        dryrun=False):
+        self.name = 'unlink'
+        self.files = files
+        self.opcnt = opcnt
+        self.factor = factor
+        self.dryrun = dryrun
+        self.elapsed = []
+
+    def exe(self):
+        verbose(" unlink: os.unlink(%d files)" % self.opcnt, VERBOSE)
+        if self.dryrun: return
+
+        for f in self.files:
+            s = timer()
+            os.unlink(f)
+            self.elapsed.append(timer() - s)
+        
+        if not self.dryrun:
+            assert self.opcnt == len(self.elapsed)
+
+    def get(self):
+        out = {}
+        out['name'] = self.name
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
