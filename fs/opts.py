@@ -66,10 +66,6 @@ class Options(BaseOptions):
             dest="confirm", default=True,
             help="force to go, do not confirm (default: disabled)")
         
-        self.optParser.add_option("--quick-report", action="store_true",
-            dest="quickreport", default=False,
-            help="quick report, does not save any data (default: disabled)")
-        
         self.optParser.add_option("--text-report", action="store_true",
             dest="textreport", default=False,
             help="generate text report (default: disabled)")
@@ -114,30 +110,27 @@ class Options(BaseOptions):
             meta = []
             for m in val.split(','):
                 if m in OPS_META: meta.append(m)
-            # Re-sort operations
             if len(meta) > 0:
-                _meta = ['mkdir', 'rmdir']
-                if len(list_intersect([["creat", "access", "open", 
-                    "open_close", "stat_exist", "stat_non", "utime", 
-                    "chmod", "rename", "unlink"], meta])) > 0:
-                    _meta.insert(-1, "creat")
-                    _meta.insert(-1, "unlink")
-                for o in meta:
-                    if o not in _meta: _meta.insert(-2, o)
-                meta = _meta
+                meta.extend(['mkdir', 'rmdir'])
+                meta = list_unique(meta)
+                if len(meta) > 2: meta.extend(['creat', 'unlink'])
+                meta = sorted(list_unique(meta), 
+                    key=lambda o:OPS_META.index(o))
             return meta
         elif opt == "io":
             io = []
             for o in val.split(','):
                 if o in OPS_IO: io.append(o)
             if len(io) > 0:
-                _io = ['write']
-                for o in io:
-                    if o not in _io: _io.append(o)
-                io = _io
+                io.append('write')
+                io = sorted(list_unique(io), key=lambda o:OPS_IO.index(o))
             return io
+        elif opt == "fsync": return bool(eval(str(val)))
         elif opt == "times":
             if val == "": return None
+        elif opt == "bufsize":
+            if val == "": return -1
+            else: return parse_datasize(val)
         return val
         
 ##########################################################################
@@ -147,7 +140,7 @@ class Options(BaseOptions):
 
 FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark Default Benchmarking Configuration
-# last updated: 2010/08/03
+# last updated: 2010/08/05
 
 ##########################################################################
 # Howto:
@@ -280,11 +273,13 @@ factor = 16
 fsize = 0
 bsize = 0
 flags = O_RDONLY
+mode = S_IRUSR
 
 [reread]
 fsize = 0
 bsize = 0
 flags = O_RDONLY
+mode = S_IRUSR
 
 [write]
 fsize = 0
@@ -305,21 +300,25 @@ fsize = 0
 bsize = 0
 # 'r', 'w', 'a', 'b', '+', or their combinations
 mode = r
+bufsize = 
 
 [freread]
 fsize = 0
 bsize = 0
 mode = r
+bufsize = 
 
 [fwrite]
 fsize = 0
 bsize = 0
 mode = w
+bufsize = 
 fsync = False
 
 [frewrite]
 fsize = 0
 bsize = 0
 mode = w
+bufsize =
 fsync = False
 """

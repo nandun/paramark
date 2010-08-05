@@ -221,27 +221,77 @@ class HTMLReport(Report):
         doc.add(body)
         
         body.appendChild(doc.H(self.TITLE_SIZE, value=self.TITLE))
-        
         self.runtime_section(doc, body)
+        self.meta_section(doc, body)
+        self.io_section(doc, body)
+        self.footnote_section(doc, body)
 
-        # I/O Section
+    def runtime_section(self, doc, body):
+        verbose(" writing \"Runtime Summary\" ...", VERBOSE_MORE)
+        body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
+        runtime = self.runtime_stats()
+        rows = []
+        rows.append(
+            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
+        rows.append(["Platform", "%s" % runtime["platform"]])
+        rows.append(
+            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
+        rows.append(
+            ["Time", "%s --- %s (%.2f seconds)" 
+            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["start"])))),
+              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
+               time.localtime(eval(runtime["end"])))),
+              (eval(runtime["end"]) - eval(runtime["start"])))])
+        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
+        rows.append(["Command", "%s" % runtime["cmdline"]])
+        rows.append(["Configuration",
+            doc.HREF("fsbench.conf", "../fsbench.conf")])
+        rows.append(["Data", 
+            doc.HREF("fsbench.db", "../fsbench.db")])
+        body.appendChild(doc.table([], rows))
+
+    def footnote_section(self, doc, body):
+        self.end = timer2()
+        pNode = doc.tag("p", 
+            value="Took %.2f seconds, styled by " 
+                % ((self.end[1] - self.start[1])), attrs={"class":"footnote"})
+        pNode.appendChild(doc.HREF(self.CSS_FILE, "./%s" % self.CSS_FILE))
+        pNode.appendChild(doc.TEXT(", created by "))
+        pNode.appendChild(doc.HREF("ParaMark v%s" % version.PARAMARK_VERSION,
+            version.PARAMARK_WEB))
+        pNode.appendChild(doc.TEXT(" at %s." %
+            time.strftime("%a %b %d %Y %H:%M:%S %Z", self.end[0])))
+        body.appendChild(pNode)
+        
+        htmlFile = open("%s/%s" % (self.rdir, self.MAIN_FILE), "w")
+        doc.write(htmlFile)
+        htmlFile.close()
+
+    def io_section(self, doc, body):
+        verbose(" writing \"I/O Section\" ...", VERBOSE_MORE)
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        body.appendChild(doc.H(self.SUBSECTION_SIZE, "Write"))
+        tables = sorted(list_intersect([OPS_IO, self.db.get_tables()]), 
+            key=lambda t:OPS_IO.index(t))
+        for t in tables: self.io_thread_report(t, doc, body)
+
+    def io_thread_report(self, oper, doc, body):
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, oper))
         tHead = [["fsize", "bsize", "agg", "agg w/o close()",
             "opAvg", "opMin", "opMax", "opStd", "opDist", "elasped",
             "accAgg"]]
         rows = []
         unit_suffix = "/sec"
         for hid,pid,tid,fsize,bsize,elapsed,agg,aggnoclose,opavg,opmin, \
-            opmax,opstd in self.db.select_rawdata_all("write"):
+            opmax,opstd in self.db.select_rawdata_all(oper):
             # figure generation
             op_unit, op_unit_val = unit_size(opavg)
             opdist = map(lambda e:bsize/e/op_unit_val, elapsed[1:-1])
-            figname = "opdist_write_%s_%s_%s_%s_%s.png" % \
-                (hid, pid, tid, fsize, bsize)
+            figname = "opdist_%s_%s_%s_%s_%s_%s.png" % \
+                (oper, hid, pid, tid, fsize, bsize)
             self.gplot.impulse_chart(data=opdist, name=figname,
                 title="Distribution of Per-Operation Throughput",
-                xlabel="write() system call", 
+                xlabel="%s() system call" % oper, 
                 ylabel="Throughput (%s/sec)" % op_unit)
             figlink = "figures/%s" % figname
             opdist_fighref = doc.HREF(doc.IMG(figlink, 
@@ -251,8 +301,8 @@ class HTMLReport(Report):
             ylog = False
             if num.max(elapsed) / num.min(elapsed) > LOGSCALE_THRESHOLD:
                 ylog = True
-            figname = "elapsed_write_%s_%s_%s_%s_%s.png" % \
-                (hid, pid, tid, fsize, bsize)
+            figname = "elapsed_%s_%s_%s_%s_%s_%s.png" % \
+                (oper, hid, pid, tid, fsize, bsize)
             self.gplot.impulse_chart(
                 data=map(lambda e:e/elap_unit_val, elapsed), 
                 name=figname,
@@ -265,8 +315,8 @@ class HTMLReport(Report):
                 attrs={"class":"thumbnail"}), figlink)
             
             accagg_unit, accagg_unit_val = unit_size(agg)
-            figname = "accagg_write_%s_%s_%s_%s_%s.png" % \
-                (hid, pid, tid, fsize, bsize)
+            figname = "accagg_%s_%s_%s_%s_%s_%s.png" % \
+                (oper, hid, pid, tid, fsize, bsize)
             t_bytes = 0
             t_elapsed = elapsed[0]
             accagg = [0.0] # open()
@@ -300,58 +350,91 @@ class HTMLReport(Report):
                 opdist_fighref,elapsed_fighref,accagg_fighref])
         body.appendChild(doc.table(tHead, rows))
 
-        # footnote
-        self.end = timer2()
-        pNode = doc.tag("p", 
-            value="Took %.2f seconds, styled by " 
-                % ((self.end[1] - self.start[1])), attrs={"class":"footnote"})
-        pNode.appendChild(doc.HREF(self.CSS_FILE, "./%s" % self.CSS_FILE))
-        pNode.appendChild(doc.TEXT(", created by "))
-        pNode.appendChild(doc.HREF("ParaMark v%s" % version.PARAMARK_VERSION,
-            version.PARAMARK_WEB))
-        pNode.appendChild(doc.TEXT(" at %s." %
-            time.strftime("%a %b %d %Y %H:%M:%S %Z", self.end[0])))
-        body.appendChild(pNode)
-        
-        htmlFile = open("%s/%s" % (self.rdir, self.MAIN_FILE), "w")
-        doc.write(htmlFile)
-        htmlFile.close()
 
-    def runtime_section(self, doc, body):
-        verbose(" writing \"Runtime Summary\" ...", VERBOSE_MORE)
-        body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-        runtime = self.runtime_stats()
+    def meta_section(self, doc, body):
+        section_order = ["mkdir", "rmdir", "creat", "access", 
+            "open", "open_close", "stat_exist", "stat_non", "utime", 
+            "chmod", "rename", "unlink"]
+        verbose(" writing \"Metadata Section\" ...", VERBOSE_MORE)
+        body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
+        tables = sorted(list_intersect([OPS_META, self.db.get_tables()]), 
+            key=lambda t:section_order.index(t))
+        for t in tables: self.meta_thread_report(t, doc, body)
+    
+    def meta_thread_report(self, oper, doc, body):
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, oper))
+        tHead = [["opcnt", "factor", "agg", "opAvg", "opMin", "opMax", 
+            "opStd", "opDist", "elasped", "accAgg"]]
         rows = []
-        rows.append(
-            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
-        rows.append(["Platform", "%s" % runtime["platform"]])
-        rows.append(
-            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
-        rows.append(
-            ["Time", "%s --- %s (%.2f seconds)" 
-            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["start"])))),
-              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"])))])
-        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
-        rows.append(["Command", "%s" % runtime["cmdline"]])
-        rows.append(["Configuration",
-            doc.HREF("fsbench.conf", "../fsbench.conf")])
-        rows.append(["Data", 
-            doc.HREF("fsbench.db", "../fsbench.db")])
-        body.appendChild(doc.table([], rows))
+        for hid,pid,tid,opcnt,factor,elapsed,agg,opavg,opmin,opmax,opstd in \
+            self.db.select_rawdata_all(oper):
+            opdist = map(lambda e:1/e, elapsed)
+            figname = "opdist_%s_%d_%d_%d_%d_%d.png" % \
+                (oper, hid, pid, tid, opcnt, factor)
+            self.gplot.impulse_chart(data=opdist, name=figname,
+                title="Distribution of Per-Operation Throughput",
+                xlabel="%s() system call" % oper,
+                ylabel="Throughput (ops/sec)")
+            figlink = "figures/%s" % figname
+            opdist_fighref = doc.HREF(doc.IMG(figlink,
+                attrs={"class":"thumbnail"}), figlink)
+            
+            elap_unit, elap_unit_val = unit_time(num.average(elapsed))
+            ylog = False
+            if num.max(elapsed) / num.min(elapsed) > LOGSCALE_THRESHOLD:
+                ylog = True
+            figname = "elapsed_%s_%d_%d_%d_%d_%d.png" % \
+                (oper, hid, pid, tid, opcnt, factor)
+            self.gplot.impulse_chart(
+                data=map(lambda e:e/elap_unit_val, elapsed),
+                name=figname,
+                title="Distribution of System Call Latency",
+                xlabel="%s system call" % oper,
+                ylabel="Latency (%s)" % elap_unit,
+                ylog=ylog)
+            figlink = "figures/%s" % figname
+            elapsed_fighref = doc.HREF(doc.IMG(figlink,
+                attrs={"class":"thumbnail"}), figlink)
+            
+            figname = "accagg_%s_%d_%d_%d_%d_%d.png" % \
+                (oper, hid, pid, tid, opcnt, factor)
+            t_opcnt = 0
+            t_elapsed = 0
+            accagg = []
+            for e in elapsed:
+                t_opcnt += 1
+                t_elapsed += e
+                accagg.append(t_opcnt / t_elapsed)
+            self.gplot.impulse_chart(data=accagg,
+                name=figname,
+                title="Accumulated Aggregated Performance",
+                xlabel="%s system call" % oper,
+                ylabel="Throughput (ops/sec)")
+            figlink = "figures/%s" % figname
+            accagg_fighref = doc.HREF(doc.IMG(figlink,
+                attrs={"class":"thumbnail"}), figlink)
+            
+            agg = round(agg, 3)
+            opavg = round(opavg, 3)
+            opmin = round(opmin, 3)
+            opmax = round(opmax, 3)
+            opstd = round(opstd, 3)
+            rows.append([opcnt,factor,agg,opavg,opmin,opmax,opstd,
+                opdist_fighref,elapsed_fighref,accagg_fighref])
+        body.appendChild(doc.table(tHead, rows))
 
     def css_file(self):
+        verbose(" saving css style file to %s/%s ..." % 
+            (self.rdir, self.CSS_FILE))
         cssFile = open("%s/%s" % (self.rdir, self.CSS_FILE), "w")
         cssFile.write(PARAMARK_DEFAULT_CSS_STYLE_STRING)
         cssFile.close()
         
     def write(self):
-        message("Generating HTML report to %s ... " % self.rdir)
         self.start = timer2()
-        self.css_file()
+        message("Generating HTML report to %s ... " % self.rdir)
         self.main_page()
+        self.css_file()
         message("Done!")
 
 ##########################################################################
@@ -390,8 +473,9 @@ background-color: #99c68e;
 }
 
 H3 {
-font-family: Arial;
-font-size: 12pt;
+font-family: Courier;
+font-size: 11pt;
+background-color: #efefef;
 }
 
 P[class=footnote] {
@@ -405,8 +489,8 @@ background-color: #C3FDB8;
 IMG[class=thumbnail] {
 border-style: groove;
 border-width: 1px;
-width: 20px;
-height: 20px;
+width: 16px;
+height: 16px;
 }
 
 IMG[class=demo] {
@@ -422,22 +506,21 @@ border-width: 0px;
 
 TABLE {
 font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-font-size: 12px;
+font-size: 11px;
 border-collapse: collapse;
 width: 100%;
 }
 
 TH {
-font-size: 12px;
+font-size: 11px;
 font-weight: bold;
-padding: 6px 8px;
+padding: 2px 2px;
 border-bottom: 1px solid;
 vertical-align: baseline;
 text-align: left;
 }
 
 TD {
-padding: 2px 2px;
 text-align: left;
 }
 
