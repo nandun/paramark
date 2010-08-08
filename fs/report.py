@@ -247,14 +247,12 @@ class HTMLReport(Report):
         rows.append(["Command", "%s" % runtime["cmdline"]])
         rows.append(["Configuration",
             doc.HREF("fsbench.conf", "../fsbench.conf")])
-        rows.append(["Data", 
-            doc.HREF("fsbench.db", "../fsbench.db")])
+        rows.append(["Data", doc.HREF("fsbench.db", "../fsbench.db")])
         body.appendChild(doc.table([], rows))
 
     def footnote_section(self, doc, body):
         self.end = timer2()
-        pNode = doc.tag("p", 
-            value="Took %.2f seconds, styled by " 
+        pNode = doc.tag("p", value="Took %.2f seconds, styled by " 
                 % ((self.end[1] - self.start[1])), attrs={"class":"footnote"})
         pNode.appendChild(doc.HREF(self.CSS_FILE, "./%s" % self.CSS_FILE))
         pNode.appendChild(doc.TEXT(", created by "))
@@ -271,9 +269,17 @@ class HTMLReport(Report):
     def io_section(self, doc, body):
         verbose(" writing \"I/O Section\" ...", VERBOSE_MORE)
         body.appendChild(doc.H(self.SECTION_SIZE, "I/O Performance"))
-        tables = sorted(list_intersect([OPS_IO, self.db.get_tables()]), 
+        opers = sorted(list_intersect([OPS_IO, self.db.get_tables()]), 
             key=lambda t:OPS_IO.index(t))
-        for t in tables: self.io_thread_report(t, doc, body)
+        for oper in opers:
+            hids = self.db.get_hids(oper)
+            pids = self.db.get_pids(oper)
+            tids = self.db.get_tids(oper)
+            if len(hids) == 1:
+                if len(tids) == 1:
+                    self.io_thread_report(oper, doc, body)
+                elif len(tids) > 1:
+                    self.io_host_report(oper, hids[0], doc, body)
 
     def io_thread_report(self, oper, doc, body):
         body.appendChild(doc.H(self.SUBSECTION_SIZE, oper))
@@ -349,17 +355,73 @@ class HTMLReport(Report):
             rows.append([fsize,bsize,agg,aggnoclose,opavg,opmin,opmax,opstd,
                 opdist_fighref,elapsed_fighref,accagg_fighref])
         body.appendChild(doc.table(tHead, rows))
+    
+    def io_host_report(self, oper, hid, doc, body):
+        verbose(" writing host aggregation report for %s ..." % oper,
+            VERBOSE_ALL)
+        body.appendChild(doc.H(self.SUBSECTION_SIZE, oper))
+        tHead = [["fsize", "bsize", "agg", "thdAvg", "thdMin", \
+            "thdMax", "thdStd", "thdDist"]]
+        rows = []
+        unit_suffix = "/sec"
+        res = Table()
+        for _,_,tid,fsize,bsize,_,synctime,agg,_,_,_,_,_, in \
+            self.db.select_rawdata_hid(oper, hid):
+            r = res.get(fsize, bsize)
+            if r is None:
+                thdaggs = []
+                syncs = []
+            else: thdaggs, syncs = r
+            thdaggs.append(agg)
+            syncs.append(synctime)
+            res.set(fsize, bsize, (thdaggs, syncs))
 
+        for fs in res.get_rows():
+            for bs in res.get_cols():
+                thdaggs, syncs = res.get(fs, bs)
+                agg = fs * len(thdaggs) / num.average(syncs)
+                thdavg = num.average(thdaggs)
+                thdmin = num.min(thdaggs)
+                thdmax = num.max(thdaggs)
+                thdstd = num.std(thdaggs)
+                
+                # figure generation
+                thd_unit, thd_unit_val = unit_size(thdavg)
+                thddist = map(lambda t:t/thd_unit_val, thdaggs)
+                figname = "thddist_%d_%d_%d.png" % (hid, fsize, bsize)
+                self.gplot.impulse_chart(data=thddist, name=figname,
+                    title="Distribution of Per-Thread Throughput",
+                    xlabel="Thread", 
+                    ylabel="%s Throughput (%s/sec)" % (oper, thd_unit),
+                    xmin=-1, xmax=len(thdaggs))
+                figlink = "figures/%s" % figname
+                thddist_fighref = doc.HREF(doc.IMG(figlink, 
+                    attrs={"class":"thumbnail"}), figlink)
 
+                # unit conversion
+                fs = unit_str(fs)
+                bs = unit_str(bs)
+                agg = unit_str(agg, unit_suffix)
+                thdavg = unit_str(thdavg, unit_suffix)
+                thdmin = unit_str(thdmin, unit_suffix)
+                thdmax = unit_str(thdmax, unit_suffix)
+                thdstd = unit_str(thdstd, unit_suffix)
+                
+                rows.append([fs,bs,agg,thdavg,thdmin,thdmax,thdstd,
+                    thddist_fighref])
+
+        body.appendChild(doc.table(tHead, rows))
+            
     def meta_section(self, doc, body):
         section_order = ["mkdir", "rmdir", "creat", "access", 
             "open", "open_close", "stat_exist", "stat_non", "utime", 
             "chmod", "rename", "unlink"]
         verbose(" writing \"Metadata Section\" ...", VERBOSE_MORE)
-        body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
-        tables = sorted(list_intersect([OPS_META, self.db.get_tables()]), 
+        opers = sorted(list_intersect([OPS_META, self.db.get_tables()]), 
             key=lambda t:section_order.index(t))
-        for t in tables: self.meta_thread_report(t, doc, body)
+        if len(opers) == 0: return
+        body.appendChild(doc.H(self.SECTION_SIZE, "Metadata Performance"))
+        for oper in opers: self.meta_thread_report(oper, doc, body)
     
     def meta_thread_report(self, oper, doc, body):
         body.appendChild(doc.H(self.SUBSECTION_SIZE, oper))
