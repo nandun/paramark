@@ -37,17 +37,16 @@ class Database:
         self.FORMATS['runtime'] = [('item','TEXT'), ('value','TEXT')]
         self.FORMATS['conf'] = [('sec','TEXT'), ('opt','TEXT'), 
             ('val', 'TEXT')]
-        #self.FORMATS['rawdata'] = [('hostid','INTEGER'), ('pid','INTEGER'), 
-        #    ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
-        #    ('data','BLOB'), ('sync','REAL')]
         self.FORMATS['io'] = [('hid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('fsize', 'INTEGER'), ('bsize', 'INTEGER'),
-            ('elapsed', 'BLOB'), ('agg', 'REAL'), ('aggnoclose', 'REAL'),
+            ('elapsed', 'BLOB'), ('sync', 'REAL'),
+            ('agg', 'REAL'), ('aggnoclose', 'REAL'),
             ('opavg', 'REAL'), ('opmin', 'REAL'), ('opmax', 'REAL'),
             ('opstd', 'REAL')]
         self.FORMATS['meta'] = [('hid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('opcnt', 'INTEGER'), ('factor', 'INTEGER'),
-            ('elapsed', 'BLOB'), ('agg', 'REAL'), ('opavg', 'REAL'),
+            ('elapsed', 'BLOB'), ('sync', 'REAL'),
+            ('agg', 'REAL'), ('opavg', 'REAL'),
             ('opmin', 'REAL'), ('opmax', 'REAL'), ('opstd', 'REAL')]
         self.FORMATS['aggdata'] = [('hostid','INTEGER'), ('pid','INTEGER'),
             ('tid','INTEGER'), ('oper','TEXT'), ('optype', 'INTEGER'), 
@@ -110,7 +109,7 @@ class Database:
         self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?)" 
             % table, data)
         
-    def ins_runtime(self, runtimes, overwrite=True):
+    def insert_runtime(self, runtimes, overwrite=True):
         """Save runtime variables into table runtime
         runtimes: dictionary of runtime key and values
         pickleValue: whether convert object to string
@@ -121,7 +120,7 @@ class Database:
             self.cur.execute("INSERT INTO %s VALUES (?,?)" % table, (k, v))
         self.db.commit()
 
-    def ins_conf(self, filename, overwrite=True):
+    def insert_conf(self, filename, overwrite=True):
         table = 'conf'
         self.create_table(table, self.FORMATS[table], overwrite) 
         cfg = ConfigParser.ConfigParser()
@@ -150,10 +149,10 @@ class Database:
 
                 self.create_table(o["name"], self.FORMATS["meta"], overwrite)
                 self.cur.execute(
-                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
                     % o["name"], (res.hid, res.pid, res.tid, o["opcnt"],
-                      o["factor"], o["elapsed"], agg, opavg, opmin, 
-                      opmax, opstd))
+                      o["factor"], o["elapsed"], o['synctime'],
+                      agg, opavg, opmin, opmax, opstd))
 
             elif oper.optype(o["name"]) == oper.TYPE_IO:
                 # Aggregated throughput
@@ -170,9 +169,9 @@ class Database:
 
                 self.create_table(o["name"], self.FORMATS["io"], overwrite)
                 self.cur.execute(
-                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+                    "INSERT INTO %s VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
                     % o["name"], (res.hid, res.pid, res.tid, o["fsize"], 
-                      o["bsize"], o["elapsed"],
+                      o["bsize"], o["elapsed"], o['synctime'],
                       agg, aggnoclose, opavg, opmin, opmax, opstd))
 
     def select_rawdata_all(self, table):
@@ -183,19 +182,23 @@ class Database:
         self.cur.execute("SELECT %s FROM %s" % (cols, table))
         return self.cur.fetchall()
 
-    def ins_rawdata(self, res, overwrite=True):
-        for r in res:
-            sync_prev_name, sync_prev_time = r.synctime.pop(0)
-            for o in r.opset:
-                self.create_table(o.name, self.FORMATS['rawdata'], overwrite) 
-                sync_name, sync_time = r.synctime.pop(0)
-                assert sync_name == o.name
-                self.cur.execute("INSERT INTO %s VALUES (?,?,?,?,?,?)" 
-                    % o.name, (r.hid, r.pid, r.tid, 
-                    self._obj2str(o.params), o.proc,
-                    self._obj2str(o.latencies)))
-                sync_prev_name, sync_prev_time = sync_name, sync_time
+    def select_rawdata_hid(self, table, hid):
+        self.cur.execute("SELECT * FROM %s WHERE hid=%d" 
+            % (table, hid))
+        return self.cur.fetchall()
+        
+    def get_hids(self, oper):
+        self.cur.execute("SELECT hid FROM %s GROUP BY hid" % oper)
+        return map(lambda (v,):v, self.cur.fetchall())
+
+    def get_pids(self, oper):
+        self.cur.execute("SELECT pid FROM %s GROUP BY pid" % oper)
+        return map(lambda (v,):v, self.cur.fetchall())
     
+    def get_tids(self, oper):
+        self.cur.execute("SELECT tid FROM %s GROUP BY tid" % oper)
+        return map(lambda (v,):v, self.cur.fetchall())
+
     def _sel(self, one, table, columns, where, group):
         qstr = 'SELECT %s FROM %s' % (','.join(columns), table)
         if where is not None and len(where) > 0:

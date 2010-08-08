@@ -177,6 +177,7 @@ class write:
         
         self.opcnt = 0
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -230,6 +231,7 @@ class write:
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class rewrite:
@@ -429,7 +431,7 @@ class fwrite:
                 (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
             return
 
-        block = '2' * self.bsize
+        blk = '2' * self.bsize
         cnt = int(self.fsize / self.bsize)
         # Since we write in block unit, adjust actually written fsize
         if self.fsize % self.bsize != 0:
@@ -445,7 +447,7 @@ class fwrite:
 
         while cnt > 0:
             s = timer()
-            f.write(block)
+            f.write(blk)
             self.elapsed.append(timer() - s)
             cnt -= 1
 
@@ -491,7 +493,7 @@ class frewrite:
                 (self.f, self.bsize, self.fsize/self.bsize), VERBOSE)
             return
 
-        block = '3' * self.bsize
+        blk = '3' * self.bsize
         cnt = int(self.fsize / self.bsize)
         # Since we write in block unit, adjust actually written fsize
         if self.fsize % self.bsize != 0:
@@ -507,7 +509,7 @@ class frewrite:
 
         while cnt > 0:
             s = timer()
-            f.write(block)
+            f.write(blk)
             self.elapsed.append(timer() - s)
             cnt -= 1
 

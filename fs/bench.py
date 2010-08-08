@@ -89,14 +89,13 @@ class Bench:
 
     def run(self):
         message("Start benchmarking ...")
-        self.start = timer()
         
+        self.start = timer()
         for t in self.threads: t.start()
         for t in self.threads: t.join()
+        self.end = timer()
 
         if self.cfg.dryrun: message("Dryrun, nothing was executed.\n")
-        
-        self.end = timer()
         
         self.runtime.start = "%r" % self.start
         self.runtime.end = "%r" % self.end
@@ -135,8 +134,8 @@ class Bench:
             self.db = FSDatabase(":memory:")
         else:
             self.db = FSDatabase("%s/fsbench.db" % logdir)
-        self.db.ins_runtime(self.runtime)
-        self.db.ins_conf('%s/fsbench.conf' % logdir)
+        self.db.insert_runtime(self.runtime)
+        self.db.insert_conf('%s/fsbench.conf' % logdir)
 
         if self.cfg.gxpmode:
             self.db.ins_rawdata(reslist.pop(0), self.start, True)
@@ -188,17 +187,37 @@ class ThreadSync:
         self.cnt = 0
         self.lock = threading.Lock()
         self.event = threading.Event()
+        self.cv = threading.Condition(self.lock)
+        self.barrier = self.barrier_condition
+    
+    def barrier_condition(self):
+        """
+        Barrier using condition variable
+        """
+        self.cv.acquire()
+        self.cnt += 1
+        if self.cnt == self.n:
+            self.cnt = 0
+            self.cv.notifyAll()
+        else:
+            self.cv.wait()
+        self.cv.release()
 
-    def barrier(self):
+    def barrier_event(self):
+        """
+        Barrier using event
+        """
         self.lock.acquire()
         if self.event.isSet():
             self.event.clear()
         self.cnt += 1
         if self.cnt == self.n:
             self.cnt = 0
+            self.lock.release()
             self.event.set()
-        self.lock.release()
-        self.event.wait()
+        else:
+            self.lock.release()
+            self.event.wait()
 
 class BenchThread(threading.Thread):
     def __init__(self, tid, sync, loader):
@@ -210,11 +229,9 @@ class BenchThread(threading.Thread):
         self.dryrun = loader.cfg.dryrun
         self.hid = loader.cfg.hid
         self.pid = loader.cfg.pid
-
         self.name = "Thread h%s:p%s:t%s" % (self.hid, self.pid, self.tid)
         self.wdir, self.load = loader.generate(self.tid)
-
-        self.synctime = []
+        self.synctime = 0.0
 
     def run(self):
         if not self.dryrun: os.makedirs(self.wdir)
@@ -222,15 +239,17 @@ class BenchThread(threading.Thread):
         
         for op in self.load:
             op.exe()
-            self.barrier(op.name)
+            op.synctime = self.barrier()
         
         if not self.dryrun: shutil.rmtree(self.wdir)
 
-    def barrier(self, name=""):
+    def barrier(self):
         self.sync.barrier()
         if self.gxpmode and self.tid == 0:
             self.gxp_barrier()
-        self.synctime.append((name, timer()))
+        previous = self.synctime
+        self.synctime = timer()
+        return self.synctime - previous
 
     def gxp_barrier(self):
         self.cfg.gxp.wp.write('\n')
@@ -245,6 +264,5 @@ class BenchThread(threading.Thread):
         val.hid = self.hid
         val.pid = self.pid
         val.tid = self.tid
-        val.synctime = self.synctime
         val.opset = [o.get() for o in self.load]
         return val

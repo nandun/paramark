@@ -269,3 +269,27 @@ class Values:
 
     def items(self):
         return self.__dict__.items()
+
+class Table:
+    def __init__(self):
+        self.rows = []
+        self.cols = []
+        self.tab = {}
+
+    def set(self, row, col, val):
+        if not self.tab.has_key(row): self.tab[row] = {}
+        self.tab[row][col] = val
+        if row not in self.rows: self.rows.append(row)
+        if col not in self.cols: self.cols.append(col)
+
+    def get(self, row, col):
+        try:
+            return self.tab[row][col]
+        except KeyError:
+            return None
+
+    def get_rows(self):
+        return sorted(self.rows)
+
+    def get_cols(self):
+        return sorted(self.cols)
