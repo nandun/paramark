@@ -61,9 +61,9 @@ class read:
         self.flags = flags
         self.mode = mode
         self.dryrun = dryrun
-        
         self.opcnt = 0
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -104,6 +104,7 @@ class read:
         out["bsize"] = self.bsize
         out["flags"] = self.flags
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class reread:
@@ -115,9 +116,9 @@ class reread:
         self.bsize = bsize
         self.flags = flags
         self.dryrun = dryrun
-        
         self.opcnt = 0
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -160,6 +161,7 @@ class reread:
         out["bsize"] = self.bsize
         out["flags"] = self.flags
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class write:
@@ -174,7 +176,6 @@ class write:
         self.mode = mode
         self.fsync = fsync
         self.dryrun = dryrun
-        
         self.opcnt = 0
         self.elapsed = []
         self.synctime = None
@@ -246,9 +247,9 @@ class rewrite:
         self.mode = mode
         self.fsync = fsync
         self.dryrun = dryrun
-        
         self.opcnt = 0
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -302,6 +303,7 @@ class rewrite:
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class fread:
@@ -315,6 +317,7 @@ class fread:
         self.bufsize = bufsize
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -356,6 +359,7 @@ class fread:
         out["bsize"] = self.bsize
         out["mode"] = self.mode
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class freread:
@@ -369,6 +373,7 @@ class freread:
         self.bufsize = bufsize
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -410,6 +415,7 @@ class freread:
         out["bsize"] = self.bsize
         out["mode"] = self.mode
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class fwrite:
@@ -424,6 +430,7 @@ class fwrite:
         self.fsync = fsync
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -472,6 +479,7 @@ class fwrite:
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
 
 class frewrite:
@@ -486,6 +494,7 @@ class frewrite:
         self.fsync = fsync
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         if self.dryrun:
@@ -534,6 +543,7 @@ class frewrite:
         out["mode"] = self.mode
         out["fsync"] = self.fsync
         out["elapsed"] = self.elapsed
+        out["synctime"] = self.synctime
         return out
         
 # Metadata Primitives
@@ -546,8 +556,8 @@ class mkdir:
         self.factor = factor
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" mkdir: os.mkdir(%d directories)" % self.opcnt, VERBOSE)
@@ -567,6 +577,7 @@ class mkdir:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class rmdir:
@@ -578,8 +589,8 @@ class rmdir:
         self.factor = factor
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" rmdir: os.rmdir(%d directories)" % self.opcnt, VERBOSE)
@@ -599,6 +610,7 @@ class rmdir:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class creat:
@@ -613,8 +625,8 @@ class creat:
         self.mode = mode
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
     
     def exe(self):
         verbose(" creat: os.close(os.open(%d files))" % 
@@ -635,6 +647,7 @@ class creat:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class access:
@@ -647,8 +660,8 @@ class access:
         self.mode = mode
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" access: os.access(%d files)" % self.opcnt, VERBOSE)
@@ -666,6 +679,7 @@ class access:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class open: # shadows __builtin__.open
@@ -679,8 +693,8 @@ class open: # shadows __builtin__.open
         self.mode = mode
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" open: os.open(%d files)" % self.opcnt, VERBOSE)
@@ -701,6 +715,7 @@ class open: # shadows __builtin__.open
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class open_close: # shadows __builtin__.open
@@ -714,8 +729,8 @@ class open_close: # shadows __builtin__.open
         self.mode = mode
         self.dryrun = dryrun
         assert len(self.files) == self.opcnt
-        
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" open_close: os.close(os.open(%d files))" % 
@@ -736,6 +751,7 @@ class open_close: # shadows __builtin__.open
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class stat_exist:
@@ -746,8 +762,8 @@ class stat_exist:
         self.opcnt = opcnt
         self.factor = factor
         self.dryrun = dryrun
-
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" stat_exist: os.stat(%d existing files)" % self.opcnt,
@@ -768,6 +784,7 @@ class stat_exist:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class stat_non:
@@ -778,8 +795,8 @@ class stat_non:
         self.opcnt = opcnt
         self.factor = factor
         self.dryrun = dryrun
-
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" stat_non: os.stat(%d non-existing files)" % self.opcnt,
@@ -801,6 +818,7 @@ class stat_non:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class utime:
@@ -813,6 +831,7 @@ class utime:
         self.times = times
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" utime: os.utime(%d files, %s)" % 
@@ -833,6 +852,7 @@ class utime:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class chmod:
@@ -845,6 +865,7 @@ class chmod:
         self.mode = mode
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
    
     def exe(self):
         verbose(" chmod: os.chmod(%d files, 0x%x)" % 
@@ -865,6 +886,7 @@ class chmod:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class rename:
@@ -876,6 +898,7 @@ class rename:
         self.factor = factor
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" rename: os.rename(%d files)" % self.opcnt, VERBOSE)
@@ -900,6 +923,7 @@ class rename:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out
 
 class unlink:
@@ -911,6 +935,7 @@ class unlink:
         self.factor = factor
         self.dryrun = dryrun
         self.elapsed = []
+        self.synctime = None
 
     def exe(self):
         verbose(" unlink: os.unlink(%d files)" % self.opcnt, VERBOSE)
@@ -930,4 +955,5 @@ class unlink:
         out['opcnt'] = self.opcnt
         out['factor'] = self.factor
         out['elapsed'] = self.elapsed
+        out['synctime'] = self.synctime
         return out

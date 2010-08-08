@@ -196,7 +196,7 @@ class BenchLoad:
         return '%s/io-t%d-%d-%d.tmp' % (self.threaddir, tid, fsize, bsize)
 
     def get_meta_load(self, tid, opcnt, factor):
-        key = "%d.%d" % (opcnt, factor)
+        key = "%d.%d.%d" % (tid, opcnt, factor)
         if self.meta.has_key(key): return self.meta[key]
         else:
             queue = [ str(self.threaddir) ]
