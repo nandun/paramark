@@ -109,6 +109,7 @@ class Options(BaseOptions):
         elif opt == "meta":
             meta = []
             for m in val.split(','):
+                m = m.strip().lower()
                 if m in OPS_META: meta.append(m)
             if len(meta) > 0:
                 meta.extend(['mkdir', 'rmdir'])
@@ -120,6 +121,7 @@ class Options(BaseOptions):
         elif opt == "io":
             io = []
             for o in val.split(','):
+                o = o.strip().lower()
                 if o in OPS_IO: io.append(o)
             if len(io) > 0:
                 io.append('write')
