@@ -67,94 +67,480 @@ class Report():
     def __del__(self):
         self.db.close()
 
-    def runtime_stats(self):
+    def runtime_vals(self):
         runtime = {}
-        for k, v in self.db.get_runtimes():
-            runtime[k] = v
-        return runtime
-
-    def meta_stats(self):
-        res = {}
-        for oper in self.db.meta_get_opers():
-            res[oper] = {}
-            for host in self.db.meta_get_hosts():
-                res[oper][host] = self.db.meta_stats_by_host(oper, host)
-        return res
-    
-    def io_stats(self):
-        res = {}
-        for oper in self.db.io_get_opers():
-            res[oper] = {}
-            for host in self.db.io_get_hosts():
-                res[oper][host] = self.db.io_stats_by_host(oper, host)
-        return res
-
-class TextReport(Report):
-    def __init__(self, datadir, db, cfg):
-        Report.__init__(self, datadir, db, cfg)
-        self.filename = "%s/report.txt" % self.rdir
-    
-    def write(self):
-        self.start = timer2()
-        self.out = open(self.filename, "w")
-        
-        self.db.agg_thread(True)
-        self.db.agg_host(True)
-        self.db.agg_all(True)
-
-        # runtime summary
-        runtime = self.runtime_stats()
-        self.out.write("ParaMark: v%s, %s\n" 
-            % (runtime["version"], runtime["date"]))
-        self.out.write("Platform: %s\n" % runtime["platform"])
-        self.out.write("Target: %s (%s)\n" % (runtime["wdir"],
-            runtime["mountpoint"]))
-        self.out.write("Time: %s --- %s (%.2f seconds)\n" 
+        for k, v in self.db.get_runtimes(): runtime[k] = v
+        res = []
+        res.append(("ParaMark", "v%s, %s" 
+            % (runtime["version"], runtime["date"])))
+        res.append(("Platform", "%s" % runtime["platform"]))
+        res.append(("Target", "%s (%s)" 
+            % (runtime["wdir"], runtime["mountpoint"])))
+        res.append(("Time", "%s --- %s (%.2f seconds)" 
             % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
                time.localtime(eval(runtime["start"])))),
               (time.strftime("%a %b %d %Y %H:%M:%S %Z",
                time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"]))))
-        self.out.write("User: %s (%s)\n" % (runtime["user"], runtime["uid"]))
-        self.out.write("Command: %s\n" % runtime["cmdline"])
-        self.out.write("Configuration: ./fsbench.conf\n")
-        self.out.write("Data: ./fsbench.db\n") 
+              (eval(runtime["end"]) - eval(runtime["start"])))))
+        res.append(("User", "%s (%s)" % (runtime["user"], runtime["uid"])))
+        res.append(("Command", "%s" % runtime["cmdline"]))
+        res.append(("Configuration", "../fsbench.conf"))
+        if not self.cfg.nolog:
+            res.append(("Data", "../fsbench.db"))
+        return res
 
-        meta_opers = []
-        meta_aggs = []
-        meta_stds = []
-        io_opers = []
-        io_aggs = []
-        io_stds = []
-        for tid,op,optype,thmin,thmax,thavg,thagg,thstd \
-            in self.db.get_stat_all():
-            if optype == TYPE_META:
-                meta_opers.append(op)
-                meta_aggs.append(thagg)
-                meta_stds.append(thstd)
-            elif optype == TYPE_IO:
-                io_opers.append(op)
-                io_aggs.append(thagg)
-                io_stds.append(thstd)
+    def meta_thread_vals(self, oper, hid, unit='auto', figure=False):
+        rows = []
+        for hid,pid,tid,opcnt,factor,elapsed,_,agg, \
+            opavg,opmin,opmax,opstd in \
+            self.db.select_rawdata_all(oper):
+            if figure:
+                opdist = map(lambda e:1/e, elapsed)
+                opdist_figname = "opdist_%s_%d_%d_%d_%d_%d.png" % \
+                    (oper, hid, pid, tid, opcnt, factor)
+                self.gplot.impulse_chart(data=opdist,
+                    name=opdist_figname,
+                    title="Distribution of Per-Operation Throughput",
+                    xlabel="%s() system call" % oper,
+                    ylabel="Throughput (ops/sec)")
+                
+                elap_unit, elap_unit_val = unit_time(num.average(elapsed))
+                ylog = False
+                if num.max(elapsed) / num.min(elapsed) > LOGSCALE_THRESHOLD:
+                    ylog = True
+                elapsed_figname = "elapsed_%s_%d_%d_%d_%d_%d.png" % \
+                    (oper, hid, pid, tid, opcnt, factor)
+                self.gplot.impulse_chart(
+                    data=map(lambda e:e/elap_unit_val, elapsed),
+                    name=elapsed_figname,
+                    title="Distribution of System Call Latency",
+                    xlabel="%s system call" % oper,
+                    ylabel="Latency (%s)" % elap_unit,
+                    ylog=ylog)
+                
+                t_opcnt = 0
+                t_elapsed = 0
+                accagg = []
+                for e in elapsed:
+                    t_opcnt += 1
+                    t_elapsed += e
+                    accagg.append(t_opcnt / t_elapsed)
+                accagg_figname = "accagg_%s_%d_%d_%d_%d_%d.png" % \
+                    (oper, hid, pid, tid, opcnt, factor)
+                self.gplot.impulse_chart(data=accagg,
+                    name=accagg_figname,
+                    title="Accumulated Aggregated Performance",
+                    xlabel="%s system call" % oper,
+                    ylabel="Throughput (ops/sec)")
+
+            if unit == 'auto': 
+                agg = "%s ops/s" % round(agg, 3)
+                opavg = "%s ops/s" % round(opavg, 3)
+                opmin = "%s ops/s" % round(opmin, 3)
+                opmax = "%s ops/s" % round(opmax, 3)
+                opstd = "%s ops/s" % round(opstd, 3)
             
-        if len(meta_aggs) > 0:
-            meta_aggs = map(lambda x:str(x), meta_aggs)
-            meta_stds = map(lambda x:str(x), meta_stds)
-            self.out.write("\nMetadata Performance (ops/sec)\n")
-            self.out.write("Oper: " + ",".join(meta_opers) + "\n")
-            self.out.write("Aggs: " + ",".join(meta_aggs) + "\n")
-            self.out.write("Stds: " + ",".join(meta_stds) + "\n")
+            row = [oper,hid,tid,opcnt,factor,agg,opavg,opmin,opmax,opstd]
+            if figure:
+                row.extend([opdist_figname,elapsed_figname,accagg_figname])
+            rows.append(row)
+        return rows
+
+    def meta_host_vals(self, oper, hid, unit='auto', figure=False):
+        rows = []
+        res = Table()
+        for _,_,tid,opcnt,factor,_,synctime,agg,_,_,_,_ in \
+            self.db.select_rawdata_hid(oper, hid):
+            r = res.get(opcnt, factor)
+            if r is None:
+                thdaggs = []
+                syncs = []
+            else: thdaggs, syncs = r
+            thdaggs.append(agg)
+            syncs.append(synctime)
+            res.set(opcnt, factor, (thdaggs, syncs))
+
+        for oc in res.get_rows():
+            for ft in res.get_cols():
+                thdaggs, syncs = res.get(oc, ft)
+                agg = oc * len(thdaggs) / num.average(syncs)
+                thdavg = num.average(thdaggs)
+                thdmin = num.min(thdaggs)
+                thdmax = num.max(thdaggs)
+                thdstd = num.std(thdaggs)
+                
+                # figure generation
+                if figure:
+                    thddist_figname = "thddist_%s_%d_%d_%d.png" % \
+                        (oper, hid, oc, ft)
+                    self.gplot.impulse_chart(data=thdaggs,
+                        name=thddist_figname,
+                        title="Distribution of Per-Thread Throughput",
+                        xlabel="Thread", 
+                        ylabel="%s Throughput (ops/sec)" % oper,
+                        xmin=-1, xmax=len(thdaggs))
+
+                if unit == 'auto': 
+                    agg = "%s ops/s" % round(agg, 3)
+                    thdavg = "%s ops/s" % round(thdavg, 3)
+                    thdmin = "%s ops/s" % round(thdmin, 3)
+                    thdmax = "%s ops/s" % round(thdmax, 3)
+                    thdstd = "%s ops/s" % round(thdstd, 3)
+                
+                row = [oper,hid,oc,ft,agg,thdavg,thdmin,thdmax,thdstd]
+                if figure: row.append(thddist_figname)
+                rows.append(row)
+
+        return rows
+
+    def meta_all_vals(self, oper, unit='auto', figure=False):
+        rows = []
+        res = Table()
+        for _,_,tid,opcnt,factor,_,synctime,agg,_,_,_,_ in \
+            self.db.select_rawdata_all(oper):
+            r = res.get(opcnt, factor)
+            if r is None:
+                thdaggs = []
+                syncs = []
+            else: thdaggs, syncs = r
+            thdaggs.append(agg)
+            syncs.append(synctime)
+            res.set(opcnt, factor, (thdaggs, syncs))
+
+        for oc in res.get_rows():
+            for ft in res.get_cols():
+                thdaggs, syncs = res.get(oc, ft)
+                agg = oc * len(thdaggs) / num.average(syncs)
+                thdavg = num.average(thdaggs)
+                thdmin = num.min(thdaggs)
+                thdmax = num.max(thdaggs)
+                thdstd = num.std(thdaggs)
+                
+                # figure generation
+                if figure:
+                    thddist_figname = "thddist_%s_all_%d_%d.png" % \
+                        (oper, oc, ft)
+                    self.gplot.impulse_chart(data=thdaggs,
+                        name=thddist_figname,
+                        title="Distribution of Per-Thread Throughput",
+                        xlabel="Thread", 
+                        ylabel="%s Throughput (ops/sec)" % oper,
+                        xmin=-1, xmax=len(thdaggs))
+                
+                if unit == 'auto':
+                    agg = "%s ops/s" % round(agg, 3)
+                    thdavg = "%s ops/s" % round(thdavg, 3)
+                    thdmin = "%s ops/s" % round(thdmin, 3)
+                    thdmax = "%s ops/s" % round(thdmax, 3)
+                    thdstd = "%s ops/s" % round(thdstd, 3)
+                
+                row = [oper,oc,ft,agg,thdavg,thdmin,thdmax,thdstd]
+                if figure: row.append(thddist_figname)
+                rows.append(row)
+
+        return rows
         
-        if len(io_aggs) > 0:
-            io_aggs = map(lambda x:str(x/1048576), io_aggs)
-            io_stds = map(lambda x:str(x/1048576), io_stds)
-            self.out.write("\nI/O Performance (MB/sec)\n")
-            self.out.write("Oper: " + ",".join(io_opers) + "\n")
-            self.out.write("Aggs: " + ",".join(io_aggs) + "\n")
-            self.out.write("Stds: " + ",".join(io_stds) + "\n")
+    def io_thread_vals(self, oper, hid, unit='auto', figure=False):
+        rows = []
+        unit_suffix = "/s"
+        for _,pid,tid,fsize,bsize,elapsed,_,agg,aggnoclose, \
+            opavg,opmin,opmax,opstd in \
+            self.db.select_rawdata_hid(oper, hid):
+            # figure generation
+            if figure:
+                if unit == 'auto':
+                    op_unit, op_unit_val = unit_size(opavg)
+                opdist = map(lambda e:bsize/e/op_unit_val, elapsed[1:-1])
+                opdist_figname = "opdist_%s_%s_%s_%s_%s_%s.png" % \
+                    (oper, hid, pid, tid, fsize, bsize)
+                self.gplot.impulse_chart(data=opdist, 
+                    name=opdist_figname,
+                    title="Distribution of Per-Operation Throughput",
+                    xlabel="%s() system call" % oper, 
+                    ylabel="Throughput (%s/sec)" % op_unit)
+                
+                if unit == 'auto':
+                    elap_unit, elap_unit_val = unit_time(num.average(elapsed))
+                ylog = False
+                if num.max(elapsed) / num.min(elapsed) > \
+                    LOGSCALE_THRESHOLD:
+                    ylog = True
+                elapsed_figname = "elapsed_%s_%s_%s_%s_%s_%s.png" % \
+                    (oper, hid, pid, tid, fsize, bsize)
+                self.gplot.impulse_chart(
+                    data=map(lambda e:e/elap_unit_val, elapsed), 
+                    name=elapsed_figname,
+                    title="Distribution of System Call Latency",
+                    xlabel="System call",
+                    ylabel="Latency (%s)" % elap_unit,
+                    ylog=ylog)
+                
+                if unit == 'auto':
+                    accagg_unit, accagg_unit_val = unit_size(agg)
+                accagg_figname = "accagg_%s_%s_%s_%s_%s_%s.png" % \
+                    (oper, hid, pid, tid, fsize, bsize)
+                t_bytes = 0
+                t_elapsed = elapsed[0]
+                accagg = [0.0] # open()
+                for e in elapsed[1:-1]:
+                    t_bytes += bsize
+                    t_elapsed += e
+                    accagg.append(t_bytes / t_elapsed)
+                # TODO: calculate when fsync is set
+                accagg.append(t_bytes / (t_elapsed + elapsed[-1]))
+                self.gplot.impulse_chart(
+                    data=map(lambda a:a/accagg_unit_val, accagg),
+                    name=accagg_figname,
+                    title="Accumulated Aggregated Write Performance",
+                    xlabel="System Call",
+                    ylabel="Throughput (%s/sec)" % accagg_unit)
+            
+            # unit conversion 
+            if unit == 'auto':
+                fsize = unit_str(fsize)
+                bsize = unit_str(bsize)
+                agg = unit_str(agg, unit_suffix)
+                aggnoclose = unit_str(aggnoclose, unit_suffix)
+                opavg = unit_str(opavg, unit_suffix)
+                opmin = unit_str(opmin, unit_suffix)
+                opmax = unit_str(opmax, unit_suffix)
+                opstd = unit_str(opstd, unit_suffix)
+            
+            if figure:
+                rows.append([oper,hid,tid,fsize,bsize,agg,aggnoclose,
+                    opavg,opmin,opmax,opstd,
+                    opdist_figname,elapsed_figname,accagg_figname])
+            else:
+                rows.append([oper,hid,tid,fsize,bsize,agg,aggnoclose,
+                    opavg,opmin,opmax,opstd])
+
+        return rows
+
+    def io_host_vals(self, oper, hid, unit='auto', figure=False):
+        unit_suffix = "/s"
+        rows = []
+        res = Table()
+        for _,_,tid,fsize,bsize,_,synctime,agg,_,_,_,_,_ in \
+            self.db.select_rawdata_hid(oper, hid):
+            r = res.get(fsize, bsize)
+            if r is None:
+                thdaggs = []
+                syncs = []
+            else: thdaggs, syncs = r
+            thdaggs.append(agg)
+            syncs.append(synctime)
+            res.set(fsize, bsize, (thdaggs, syncs))
+
+        for fs in res.get_rows():
+            for bs in res.get_cols():
+                thdaggs, syncs = res.get(fs, bs)
+                agg = fs * len(thdaggs) / num.average(syncs)
+                thdavg = num.average(thdaggs)
+                thdmin = num.min(thdaggs)
+                thdmax = num.max(thdaggs)
+                thdstd = num.std(thdaggs)
+                
+                # figure generation
+                if figure:
+                    thd_unit, thd_unit_val = unit_size(thdavg)
+                    thddist = map(lambda t:t/thd_unit_val, thdaggs)
+                    thddist_figname = "thddist_%s_%d_%d_%d.png" % \
+                        (oper, hid, fs, bs)
+                    self.gplot.impulse_chart(data=thddist,
+                        name=thddist_figname,
+                        title="Distribution of Per-Thread Throughput",
+                        xlabel="Thread", 
+                        ylabel="%s Throughput (%s/sec)" \
+                            % (oper, thd_unit),
+                        xmin=-1, xmax=len(thdaggs))
+
+                # unit conversion
+                if unit == 'auto':
+                    fs = unit_str(fs)
+                    bs = unit_str(bs)
+                    agg = unit_str(agg, unit_suffix)
+                    thdavg = unit_str(thdavg, unit_suffix)
+                    thdmin = unit_str(thdmin, unit_suffix)
+                    thdmax = unit_str(thdmax, unit_suffix)
+                    thdstd = unit_str(thdstd, unit_suffix)
+                
+                row = [oper,hid,fs,bs,agg,thdavg,thdmin,thdmax,thdstd]
+                if figure: row.append(thddist_figname)
+                rows.append(row)
         
-        self.out.close()
-        sys.stdout.write("Report generated to %s/report.txt\n" % self.rdir)
+        return rows
+    
+    def io_all_vals(self, oper, unit='auto', figure=False):
+        unit_suffix = "/s"
+        rows = []
+        res = Table()
+        for _,_,tid,fsize,bsize,_,synctime,agg,_,_,_,_,_ in \
+            self.db.select_rawdata_all(oper):
+            r = res.get(fsize, bsize)
+            if r is None:
+                thdaggs = []
+                syncs = []
+            else: thdaggs, syncs = r
+            thdaggs.append(agg)
+            syncs.append(synctime)
+            res.set(fsize, bsize, (thdaggs, syncs))
+
+        for fs in res.get_rows():
+            for bs in res.get_cols():
+                thdaggs, syncs = res.get(fs, bs)
+                agg = fs * len(thdaggs) / num.average(syncs)
+                thdavg = num.average(thdaggs)
+                thdmin = num.min(thdaggs)
+                thdmax = num.max(thdaggs)
+                thdstd = num.std(thdaggs)
+                
+                # figure generation
+                if unit == 'auto':
+                    thd_unit, thd_unit_val = unit_size(thdavg)
+                
+                if figure:
+                    thddist = map(lambda t:t/thd_unit_val, thdaggs)
+                    thddist_figname = "thddist_%s_all_%d_%d.png" % \
+                        (oper, fs, bs)
+                    self.gplot.impulse_chart(data=thddist,
+                        name=thddist_figname,
+                        title="Distribution of Per-Thread Throughput",
+                        xlabel="Thread", 
+                        ylabel="%s Throughput (%s/sec)" % (oper, thd_unit),
+                        xmin=-1, xmax=len(thdaggs))
+
+                # unit conversion
+                if unit == 'auto':
+                    fs = unit_str(fs)
+                    bs = unit_str(bs)
+                    agg = unit_str(agg, unit_suffix)
+                    thdavg = unit_str(thdavg, unit_suffix)
+                    thdmin = unit_str(thdmin, unit_suffix)
+                    thdmax = unit_str(thdmax, unit_suffix)
+                    thdstd = unit_str(thdstd, unit_suffix)
+                
+                row = [oper,fs,bs,agg,thdavg,thdmin,thdmax,thdstd]
+                if figure: row.append(thddist_figname)
+                rows.append(row)
+    
+        return rows
+                
+class TextReport(Report):
+    def __init__(self, datadir, db, cfg):
+        Report.__init__(self, datadir, db, cfg)
+        self.filename = "%s/report.txt" % self.rdir
+        self.txtwidth = 128
+        self.txtsep = "#" * self.txtwidth
+        self.f = None
+
+    def runtime_section(self):
+        self.f.write("# Runtime Summary\n")
+        for v in self.runtime_vals(): self.f.write("%s: %s\n" % v)
+        self.f.write("\n")
+        self.f.flush()
+
+    def meta_section(self):
+        section_order = ["mkdir", "rmdir", "creat", "access", 
+            "open", "open_close", "stat_exist", "stat_non", "utime", 
+            "chmod", "rename", "unlink"]
+        opers = sorted(list_intersect([OPS_META, self.db.get_tables()]), 
+            key=lambda t:section_order.index(t))
+        if len(opers) == 0: return
+        verbose(" writing \"Metadata Section\" ...", VERBOSE_MORE)
+        self.f.write("# Metadata Performance\n")
+        hids = self.db.get_hids(opers[0])
+        pids = self.db.get_pids(opers[0])
+        tids = self.db.get_tids(opers[0])
+        if len(hids) > 1 or len(tids) > 1: self.meta_all_report(opers)
+        if len(hids) > 1: self.meta_host_report(opers, hids)
+        if len(hids) >= 1 or len(tids) > 1:
+            self.meta_thread_report(opers, hids)
+        self.f.flush()
+
+    def meta_thread_report(self, opers, hids):
+        self.f.write("Meta:Per-Thread Performance\n")
+        rows = [["oper", "hid", "tid", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"]]
+        for oper in opers:
+            for hid in hids: rows.extend(self.meta_thread_vals(oper, hid))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+
+    def meta_host_report(self, opers, hids):
+        self.f.write("Meta:Per-Host Performance\n")
+        rows = [["oper", "hid", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"]]
+        for oper in opers:
+            for hid in hids: rows.extend(self.meta_host_vals(oper, hid))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+
+    def meta_all_report(self, opers):
+        self.f.write("Meta:Per-Thread Performance\n")
+        rows = [["oper", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"]]
+        for oper in opers: rows.extend(self.meta_all_vals(oper))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+    
+    def io_section(self):
+        opers = sorted(list_intersect([OPS_IO, self.db.get_tables()]), 
+            key=lambda t:OPS_IO.index(t))
+        if len(opers) == 0: return
+        verbose(" writing \"I/O Section\" ...", VERBOSE_MORE)
+        self.f.write("# I/O Performance\n")
+        hids = self.db.get_hids(opers[0])
+        pids = self.db.get_pids(opers[0])
+        tids = self.db.get_tids(opers[0])
+        if len(hids) > 1 or len(tids) > 1: self.io_all_report(opers)
+        if len(hids) > 1: self.io_host_report(opers, hids)
+        if len(hids) >= 1 or len(tids) > 1:
+            self.io_thread_report(opers, hids)
+        self.f.flush()
+
+    def io_thread_report(self, opers, hids):
+        self.f.write("IO:Per-Thread Performance\n")
+        rows = [["oper", "hid", "tid", "fsize", "bsize", "agg", 
+            "agg w/o close()", "opAvg", "opMin", "opMax", "opStd"]]
+        for oper in opers:
+            for hid in hids: rows.extend(self.io_thread_vals(oper, hid))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+    
+    def io_host_report(self, opers, hids):
+        self.f.write("IO:Per-Host Performance\n")
+        rows = [["oper", "hid", "fsize", "bsize", "agg", "thdAvg", "thdMin", 
+            "thdMax", "thdStd"]]
+        for oper in opers:
+            for hid in hids: rows.extend(self.io_host_vals(oper, hid))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+
+    def io_all_report(self, opers):
+        self.f.write("IO:Overall Performance\n")
+        rows = [["oper", "fsize", "bsize", "agg", "thdAvg", "thdMin",
+            "thdMax", "thdStd"]]
+        for oper in opers: rows.extend(self.io_all_vals(oper))
+        print_text_table(self.f, rows)
+        self.f.write("\n")
+        self.f.flush()
+    
+    def write(self):
+        self.start = timer2()
+        message("Generating text report to %s/report.txt ..." % self.rdir)
+        self.f = open(self.filename, "w")
+        
+        self.runtime_section()
+        self.meta_section()
+        self.io_section()
+        
+        self.f.close()
+        message("Done!")
 
 class HTMLReport(Report):
     def __init__(self, datadir, db, cfg):
@@ -232,26 +618,11 @@ class HTMLReport(Report):
     def runtime_section(self, doc, body):
         verbose(" writing \"Runtime Summary\" ...", VERBOSE_MORE)
         body.appendChild(doc.H(self.SECTION_SIZE, "Runtime Summary"))
-        runtime = self.runtime_stats()
         rows = []
-        rows.append(
-            ["ParaMark", "v%s, %s" % (runtime["version"], runtime["date"])])
-        rows.append(["Platform", "%s" % runtime["platform"]])
-        rows.append(
-            ["Target", "%s (%s)" % (runtime["wdir"], runtime["mountpoint"])])
-        rows.append(
-            ["Time", "%s --- %s (%.2f seconds)" 
-            % ((time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["start"])))),
-              (time.strftime("%a %b %d %Y %H:%M:%S %Z",
-               time.localtime(eval(runtime["end"])))),
-              (eval(runtime["end"]) - eval(runtime["start"])))])
-        rows.append(["User","%s (%s)" % (runtime["user"], runtime["uid"])])
-        rows.append(["Command", "%s" % runtime["cmdline"]])
-        rows.append(["Configuration",
-            doc.HREF("fsbench.conf", "../fsbench.conf")])
-        if not self.cfg.nolog:
-            rows.append(["Data", doc.HREF("fsbench.db", "../fsbench.db")])
+        for item, val in self.runtime_vals():
+            if item in ["Configuration", "Data"]:
+                val = doc.HREF(os.path.basename(val), val)
+            rows.append([item, val])
         body.appendChild(doc.table([], rows))
 
     def footnote_section(self, doc, body):
@@ -283,90 +654,24 @@ class HTMLReport(Report):
             self.io_all_report(opers, doc, body)
         if len(hids) > 1:
             self.io_host_report(opers, hids, doc, body)
-        if len(hids) > 1 and len(tids) > 1:
+        if len(hids) >= 1 or len(tids) > 1:
             self.io_thread_report(opers, hids, doc, body)
             
     def io_thread_report(self, opers, hids, doc, body):
         body.appendChild(doc.H(self.SUBSECTION_SIZE, 
             "Per-Thread Performance"))
         tHead = [["oper", "hid", "tid", "fsize", "bsize", "agg", 
-            "agg w/o close()",
-            "opAvg", "opMin", "opMax", "opStd", "opDist", "elasped",
-            "accAgg"]]
+            "agg w/o close()", "opAvg", "opMin", "opMax", "opStd", 
+            "opDist", "elasped", "accAgg"]]
         rows = []
-        unit_suffix = "/sec"
         for oper in opers:
             for hid in hids:
-                for _,pid,tid,fsize,bsize,elapsed,_,agg,aggnoclose, \
-                    opavg,opmin,opmax,opstd in \
-                    self.db.select_rawdata_hid(oper, hid):
-                    # figure generation
-                    op_unit, op_unit_val = unit_size(opavg)
-                    opdist = map(lambda e:bsize/e/op_unit_val, elapsed[1:-1])
-                    figname = "opdist_%s_%s_%s_%s_%s_%s.png" % \
-                        (oper, hid, pid, tid, fsize, bsize)
-                    self.gplot.impulse_chart(data=opdist, name=figname,
-                        title="Distribution of Per-Operation Throughput",
-                        xlabel="%s() system call" % oper, 
-                        ylabel="Throughput (%s/sec)" % op_unit)
-                    figlink = "figures/%s" % figname
-                    opdist_fighref = doc.HREF(doc.IMG(figlink, 
-                        attrs={"class":"thumbnail"}), figlink)
-                    
-                    elap_unit, elap_unit_val = unit_time(num.average(elapsed))
-                    ylog = False
-                    if num.max(elapsed) / num.min(elapsed) > \
-                        LOGSCALE_THRESHOLD:
-                        ylog = True
-                    figname = "elapsed_%s_%s_%s_%s_%s_%s.png" % \
-                        (oper, hid, pid, tid, fsize, bsize)
-                    self.gplot.impulse_chart(
-                        data=map(lambda e:e/elap_unit_val, elapsed), 
-                        name=figname,
-                        title="Distribution of System Call Latency",
-                        xlabel="System call",
-                        ylabel="Latency (%s)" % elap_unit,
-                        ylog=ylog)
-                    figlink = "figures/%s" % figname
-                    elapsed_fighref = doc.HREF(doc.IMG(figlink, 
-                        attrs={"class":"thumbnail"}), figlink)
-                    
-                    accagg_unit, accagg_unit_val = unit_size(agg)
-                    figname = "accagg_%s_%s_%s_%s_%s_%s.png" % \
-                        (oper, hid, pid, tid, fsize, bsize)
-                    t_bytes = 0
-                    t_elapsed = elapsed[0]
-                    accagg = [0.0] # open()
-                    for e in elapsed[1:-1]:
-                        t_bytes += bsize
-                        t_elapsed += e
-                        accagg.append(t_bytes / t_elapsed)
-                    # TODO: calculate when fsync is set
-                    accagg.append(t_bytes / (t_elapsed + elapsed[-1]))
-                    self.gplot.impulse_chart(
-                        data=map(lambda a:a/accagg_unit_val, accagg),
-                        name=figname,
-                        title="Accumulated Aggregated Write Performance",
-                        xlabel="System Call",
-                        ylabel="Throughput (%s/sec)" % accagg_unit)
-                    figlink = "figures/%s" % figname
-                    accagg_fighref = doc.HREF(doc.IMG(figlink, 
-                        attrs={"class":"thumbnail"}), figlink)
-                    
-                    # unit conversion 
-                    fsize = unit_str(fsize)
-                    bsize = unit_str(bsize)
-                    agg = unit_str(agg, unit_suffix)
-                    aggnoclose = unit_str(aggnoclose, unit_suffix)
-                    opavg = unit_str(opavg, unit_suffix)
-                    opmin = unit_str(opmin, unit_suffix)
-                    opmax = unit_str(opmax, unit_suffix)
-                    opstd = unit_str(opstd, unit_suffix)
-
-                    rows.append([oper,hid,tid,fsize,bsize,agg,aggnoclose,
-                        opavg,opmin,opmax,opstd,
-                        opdist_fighref,elapsed_fighref,accagg_fighref])
-
+                for res in self.io_thread_vals(oper, hid, 'auto', True):
+                    for i in range(-3,0):
+                        figlink = "figures/%s" % res[i]
+                        res[i] = doc.HREF(doc.IMG(figlink,
+                            attrs={"class":"thumbnail"}), figlink)
+                    rows.append(res)
         body.appendChild(doc.table(tHead, rows))
 
     def io_host_report(self, opers, hids, doc, body):
@@ -376,57 +681,13 @@ class HTMLReport(Report):
         tHead = [["oper", "hid", "fsize", "bsize", "agg", \
             "thdAvg", "thdMin", "thdMax", "thdStd", "thdDist"]]
         rows = []
-        unit_suffix = "/sec"
         for oper in opers:
             for hid in hids:
-                res = Table()
-                for _,_,tid,fsize,bsize,_,synctime,agg,_,_,_,_,_ in \
-                    self.db.select_rawdata_hid(oper, hid):
-                    r = res.get(fsize, bsize)
-                    if r is None:
-                        thdaggs = []
-                        syncs = []
-                    else: thdaggs, syncs = r
-                    thdaggs.append(agg)
-                    syncs.append(synctime)
-                    res.set(fsize, bsize, (thdaggs, syncs))
-
-                for fs in res.get_rows():
-                    for bs in res.get_cols():
-                        thdaggs, syncs = res.get(fs, bs)
-                        agg = fs * len(thdaggs) / num.average(syncs)
-                        thdavg = num.average(thdaggs)
-                        thdmin = num.min(thdaggs)
-                        thdmax = num.max(thdaggs)
-                        thdstd = num.std(thdaggs)
-                        
-                        # figure generation
-                        thd_unit, thd_unit_val = unit_size(thdavg)
-                        thddist = map(lambda t:t/thd_unit_val, thdaggs)
-                        figname = "thddist_%s_%d_%d_%d.png" % \
-                            (oper, hid, fs, bs)
-                        self.gplot.impulse_chart(data=thddist, name=figname,
-                            title="Distribution of Per-Thread Throughput",
-                            xlabel="Thread", 
-                            ylabel="%s Throughput (%s/sec)" \
-                                % (oper, thd_unit),
-                            xmin=-1, xmax=len(thdaggs))
-                        figlink = "figures/%s" % figname
-                        thddist_fighref = doc.HREF(doc.IMG(figlink, 
-                            attrs={"class":"thumbnail"}), figlink)
-
-                        # unit conversion
-                        fs = unit_str(fs)
-                        bs = unit_str(bs)
-                        agg = unit_str(agg, unit_suffix)
-                        thdavg = unit_str(thdavg, unit_suffix)
-                        thdmin = unit_str(thdmin, unit_suffix)
-                        thdmax = unit_str(thdmax, unit_suffix)
-                        thdstd = unit_str(thdstd, unit_suffix)
-
-                        rows.append([oper,hid,fs,bs,agg,thdavg,thdmin,
-                            thdmax,thdstd, thddist_fighref])
-            
+                for res in self.io_host_vals(oper, hid, 'auto', True):
+                    figlink = "figures/%s" % res[-1]
+                    res[-1] = doc.HREF(doc.IMG(figlink,
+                        attrs={"class":"thumbnail"}), figlink)
+                    rows.append(res)
         body.appendChild(doc.table(tHead, rows))
     
     def io_all_report(self, opers, doc, body):
@@ -436,55 +697,12 @@ class HTMLReport(Report):
         tHead = [["oper", "fsize", "bsize", "agg", "thdAvg", "thdMin", \
             "thdMax", "thdStd", "thdDist"]]
         rows = []
-        unit_suffix = "/sec"
         for oper in opers:
-            res = Table()
-            for _,_,tid,fsize,bsize,_,synctime,agg,_,_,_,_,_ in \
-                self.db.select_rawdata_all(oper):
-                r = res.get(fsize, bsize)
-                if r is None:
-                    thdaggs = []
-                    syncs = []
-                else: thdaggs, syncs = r
-                thdaggs.append(agg)
-                syncs.append(synctime)
-                res.set(fsize, bsize, (thdaggs, syncs))
-
-            for fs in res.get_rows():
-                for bs in res.get_cols():
-                    thdaggs, syncs = res.get(fs, bs)
-                    agg = fs * len(thdaggs) / num.average(syncs)
-                    thdavg = num.average(thdaggs)
-                    thdmin = num.min(thdaggs)
-                    thdmax = num.max(thdaggs)
-                    thdstd = num.std(thdaggs)
-                    
-                    # figure generation
-                    thd_unit, thd_unit_val = unit_size(thdavg)
-                    thddist = map(lambda t:t/thd_unit_val, thdaggs)
-                    figname = "thddist_%s_all_%d_%d.png" % \
-                        (oper, fs, bs)
-                    self.gplot.impulse_chart(data=thddist, name=figname,
-                        title="Distribution of Per-Thread Throughput",
-                        xlabel="Thread", 
-                        ylabel="%s Throughput (%s/sec)" % (oper, thd_unit),
-                        xmin=-1, xmax=len(thdaggs))
-                    figlink = "figures/%s" % figname
-                    thddist_fighref = doc.HREF(doc.IMG(figlink, 
-                        attrs={"class":"thumbnail"}), figlink)
-
-                    # unit conversion
-                    fs = unit_str(fs)
-                    bs = unit_str(bs)
-                    agg = unit_str(agg, unit_suffix)
-                    thdavg = unit_str(thdavg, unit_suffix)
-                    thdmin = unit_str(thdmin, unit_suffix)
-                    thdmax = unit_str(thdmax, unit_suffix)
-                    thdstd = unit_str(thdstd, unit_suffix)
-
-                    rows.append([oper,fs,bs,agg,thdavg,thdmin,thdmax,thdstd,
-                        thddist_fighref])
-
+            for res in self.io_all_vals(oper, 'auto', True):
+                figlink = "figures/%s" % res[-1]
+                res[-1] = doc.HREF(doc.IMG(figlink,
+                    attrs={"class":"thumbnail"}), figlink)
+                rows.append(res)
         body.appendChild(doc.table(tHead, rows))
             
     def meta_section(self, doc, body):
@@ -501,76 +719,24 @@ class HTMLReport(Report):
         tids = self.db.get_tids(opers[0])
         if len(hids) > 1 or len(tids) > 1:
             self.meta_all_report(opers, doc, body)
-        if len(hids) > 1:
-            self.meta_host_report(opers, hids, doc, body)
-        if len(hids) > 1 and len(tids) > 1:
+        if len(hids) > 1: self.meta_host_report(opers, hids, doc, body)
+        if len(hids) >= 1 or len(tids) > 1:
             self.meta_thread_report(opers, hids, doc, body)
     
-    def meta_thread_report(self, opers, hid, doc, body):
+    def meta_thread_report(self, opers, hids, doc, body):
         body.appendChild(doc.H(self.SUBSECTION_SIZE, 
             "Per-Thread Performance"))
         tHead = [["oper", "tid", "opcnt", "factor", "agg", "opAvg", 
             "opMin", "opMax", "opStd", "opDist", "elasped", "accAgg"]]
         rows = []
         for oper in opers:
-            for hid,pid,tid,opcnt,factor,elapsed,_,agg, \
-                opavg,opmin,opmax,opstd in \
-                self.db.select_rawdata_all(oper):
-                opdist = map(lambda e:1/e, elapsed)
-                figname = "opdist_%s_%d_%d_%d_%d_%d.png" % \
-                    (oper, hid, pid, tid, opcnt, factor)
-                self.gplot.impulse_chart(data=opdist, name=figname,
-                    title="Distribution of Per-Operation Throughput",
-                    xlabel="%s() system call" % oper,
-                    ylabel="Throughput (ops/sec)")
-                figlink = "figures/%s" % figname
-                opdist_fighref = doc.HREF(doc.IMG(figlink,
-                    attrs={"class":"thumbnail"}), figlink)
-                
-                elap_unit, elap_unit_val = unit_time(num.average(elapsed))
-                ylog = False
-                if num.max(elapsed) / num.min(elapsed) > LOGSCALE_THRESHOLD:
-                    ylog = True
-                figname = "elapsed_%s_%d_%d_%d_%d_%d.png" % \
-                    (oper, hid, pid, tid, opcnt, factor)
-                self.gplot.impulse_chart(
-                    data=map(lambda e:e/elap_unit_val, elapsed),
-                    name=figname,
-                    title="Distribution of System Call Latency",
-                    xlabel="%s system call" % oper,
-                    ylabel="Latency (%s)" % elap_unit,
-                    ylog=ylog)
-                figlink = "figures/%s" % figname
-                elapsed_fighref = doc.HREF(doc.IMG(figlink,
-                    attrs={"class":"thumbnail"}), figlink)
-                
-                figname = "accagg_%s_%d_%d_%d_%d_%d.png" % \
-                    (oper, hid, pid, tid, opcnt, factor)
-                t_opcnt = 0
-                t_elapsed = 0
-                accagg = []
-                for e in elapsed:
-                    t_opcnt += 1
-                    t_elapsed += e
-                    accagg.append(t_opcnt / t_elapsed)
-                self.gplot.impulse_chart(data=accagg,
-                    name=figname,
-                    title="Accumulated Aggregated Performance",
-                    xlabel="%s system call" % oper,
-                    ylabel="Throughput (ops/sec)")
-                figlink = "figures/%s" % figname
-                accagg_fighref = doc.HREF(doc.IMG(figlink,
-                    attrs={"class":"thumbnail"}), figlink)
-                
-                agg = round(agg, 3)
-                opavg = round(opavg, 3)
-                opmin = round(opmin, 3)
-                opmax = round(opmax, 3)
-                opstd = round(opstd, 3)
-                rows.append([oper,tid,opcnt,factor,agg,
-                    opavg,opmin,opmax,opstd,
-                    opdist_fighref,elapsed_fighref,accagg_fighref])
-
+            for hid in hids:
+                for res in self.meta_thread_vals(oper, hid, 'auto', True):
+                    for i in range(-3,0):
+                        figlink = "figures/%s" % res[i]
+                        res[i] = doc.HREF(doc.IMG(figlink,
+                            attrs={"class":"thumbnail"}), figlink)
+                    rows.append(res)
         body.appendChild(doc.table(tHead, rows))
     
     def meta_host_report(self, opers, hids, doc, body):
@@ -578,53 +744,16 @@ class HTMLReport(Report):
             VERBOSE_ALL)
         body.appendChild(doc.H(self.SUBSECTION_SIZE, 
             "Per-Host Performance"))
-        tHead = [["oper", "opcnt", "factor", "agg", "thdAvg", 
+        tHead = [["oper", "hid", "opcnt", "factor", "agg", "thdAvg", 
             "thdMin", "thdMax", "thdStd", "thdDist"]]
         rows = []
         for oper in opers:
             for hid in hids:
-                res = Table()
-                for _,_,tid,opcnt,factor,_,synctime,agg,_,_,_,_ in \
-                    self.db.select_rawdata_hid(oper, hid):
-                    r = res.get(opcnt, factor)
-                    if r is None:
-                        thdaggs = []
-                        syncs = []
-                    else: thdaggs, syncs = r
-                    thdaggs.append(agg)
-                    syncs.append(synctime)
-                    res.set(opcnt, factor, (thdaggs, syncs))
-
-                for oc in res.get_rows():
-                    for ft in res.get_cols():
-                        thdaggs, syncs = res.get(oc, ft)
-                        agg = oc * len(thdaggs) / num.average(syncs)
-                        thdavg = num.average(thdaggs)
-                        thdmin = num.min(thdaggs)
-                        thdmax = num.max(thdaggs)
-                        thdstd = num.std(thdaggs)
-                        
-                        # figure generation
-                        figname = "thddist_%s_%d_%d_%d.png" % \
-                            (oper, hid, oc, ft)
-                        self.gplot.impulse_chart(data=thdaggs, name=figname,
-                            title="Distribution of Per-Thread Throughput",
-                            xlabel="Thread", 
-                            ylabel="%s Throughput (ops/sec)" % oper,
-                            xmin=-1, xmax=len(thdaggs))
-                        figlink = "figures/%s" % figname
-                        thddist_fighref = doc.HREF(doc.IMG(figlink, 
-                            attrs={"class":"thumbnail"}), figlink)
-
-                        agg = round(agg, 3)
-                        thdavg = round(thdavg, 3)
-                        thdmin = round(thdmin, 3)
-                        thdmax = round(thdmax, 3)
-                        thdstd = round(thdstd, 3)
-                        
-                        rows.append([oper,oc,ft,agg,thdavg,thdmin,
-                            thdmax,thdstd,thddist_fighref])
-        
+                for res in self.meta_host_vals(oper, hid, 'auto', True):
+                    figlink = "figures/%s" % res[-1]
+                    res[-1] = doc.HREF(doc.IMG(figlink,
+                        attrs={"class":"thumbnail"}), figlink)
+                    rows.append(res)
         body.appendChild(doc.table(tHead, rows))
         
     def meta_all_report(self, opers, doc, body):
@@ -636,48 +765,11 @@ class HTMLReport(Report):
             "thdMin", "thdMax", "thdStd", "thdDist"]]
         rows = []
         for oper in opers:
-            res = Table()
-            for _,_,tid,opcnt,factor,_,synctime,agg,_,_,_,_ in \
-                self.db.select_rawdata_all(oper):
-                r = res.get(opcnt, factor)
-                if r is None:
-                    thdaggs = []
-                    syncs = []
-                else: thdaggs, syncs = r
-                thdaggs.append(agg)
-                syncs.append(synctime)
-                res.set(opcnt, factor, (thdaggs, syncs))
-
-            for oc in res.get_rows():
-                for ft in res.get_cols():
-                    thdaggs, syncs = res.get(oc, ft)
-                    agg = oc * len(thdaggs) / num.average(syncs)
-                    thdavg = num.average(thdaggs)
-                    thdmin = num.min(thdaggs)
-                    thdmax = num.max(thdaggs)
-                    thdstd = num.std(thdaggs)
-                    
-                    # figure generation
-                    figname = "thddist_%s_all_%d_%d.png" % \
-                        (oper, oc, ft)
-                    self.gplot.impulse_chart(data=thdaggs, name=figname,
-                        title="Distribution of Per-Thread Throughput",
-                        xlabel="Thread", 
-                        ylabel="%s Throughput (ops/sec)" % oper,
-                        xmin=-1, xmax=len(thdaggs))
-                    figlink = "figures/%s" % figname
-                    thddist_fighref = doc.HREF(doc.IMG(figlink, 
-                        attrs={"class":"thumbnail"}), figlink)
-
-                    agg = round(agg, 3)
-                    thdavg = round(thdavg, 3)
-                    thdmin = round(thdmin, 3)
-                    thdmax = round(thdmax, 3)
-                    thdstd = round(thdstd, 3)
-                    
-                    rows.append([oper,oc,ft,agg,thdavg,thdmin,thdmax,thdstd,
-                        thddist_fighref])
-        
+            for res in self.meta_all_vals(oper, 'auto', True):
+                figlink = "figures/%s" % res[-1]
+                res[-1] = doc.HREF(doc.IMG(figlink,
+                    attrs={"class":"thumbnail"}), figlink)
+                rows.append(res)
         body.appendChild(doc.table(tHead, rows))
 
     def css_file(self):

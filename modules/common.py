@@ -237,6 +237,17 @@ def get_filesystem_info(path):
     
     return mountfs
 
+# Pretty Print
+def print_text_table(fstream, table, space=2):
+    col_max = []
+    for i in range(len(table[0])):
+        col_max.append(max([len(str(row[i])) for row in table]))
+    for row in table:
+        for i in range(0, len(row)):
+            fstream.write(str(row[i]).rjust(col_max[i] + space))
+        fstream.write("\n")
+
+# Containers
 class Values:
     """
     Container for key/value pairs
