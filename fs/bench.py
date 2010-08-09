@@ -136,7 +136,7 @@ class Bench:
         if self.cfg.nolog: self.db = Database(":memory:")
         else: self.db = Database("%s/fsbench.db" % logdir)
         self.db.insert_runtime(self.runtime)
-        self.db.insert_conf('%s/fsbench.conf' % logdir)
+        self.db.insert_conf(self.opts.cfgParser)
 
         if self.cfg.gxpmode:
             for res in reslist:
@@ -164,7 +164,7 @@ class Bench:
         if self.cfg.report:
             logdir = self.cfg.report
         if self.cfg.textreport:
-            self.report = report.TextReport(logdir, self.db)
+            self.report = report.TextReport(logdir, self.db, self.cfg)
         else:
             self.report = report.HTMLReport(logdir, self.db, self.cfg)
         self.report.write()
