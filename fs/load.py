@@ -36,8 +36,8 @@ class BenchLoad:
 
     def generate(self, tid):
         self.threaddir = '%s-%d' % (self.dir, tid)
-        load = self.generate_io(tid)
-        load.extend(self.generate_meta(tid))
+        load = self.generate_meta(tid)
+        load.extend(self.generate_io(tid))
         return self.threaddir, load
 
     def generate_io(self, tid):

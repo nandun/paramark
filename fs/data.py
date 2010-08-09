@@ -69,6 +69,9 @@ class Database:
         if self.db is not None:
             self.db.commit()
             self.db.close()
+    
+    def commit(self):
+        self.db.commit()
 
     def close(self):
         """Flush and close database"""
