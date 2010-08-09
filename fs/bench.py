@@ -38,7 +38,7 @@ from modules import num
 from modules import gxp
 from load import *
 import oper
-from data import Database as FSDatabase
+from data import Database as Database
 
 VERBOSE = 1
 VERBOSE_MORE = VERBOSE + 1
@@ -70,6 +70,8 @@ class Bench:
         self.cfg.pid = self.runtime.pid
         self.loader = BenchLoad(self.cfg)
         self.threads = []
+        self.db = None
+        self.gxp = None
        
     def load(self):
         if self.cfg.gxpmode:
@@ -80,22 +82,24 @@ class Bench:
             self.gxp.size = gxp.get_size()
             self.runtime.hid = self.gxp.rank
             self.runtime.nhosts = self.gxp.size
+            self.cfg.hid = self.runtime.hid
         
         self.threadsync = ThreadSync(self.cfg.nthreads)
         for i in range(0, self.cfg.nthreads):
-            if i == 0 and self.cfg.gxpmode:
-                cfg.gxp = self.gxp
-            self.threads.append(BenchThread(i, self.threadsync, self.loader))
+            self.threads.append(BenchThread(i, self.threadsync, 
+                self.loader, self.gxp))
 
     def run(self):
-        message("Start benchmarking ...")
+        if self.runtime.hid == 0:
+            message("Start benchmarking ...")
         
         self.start = timer()
         for t in self.threads: t.start()
         for t in self.threads: t.join()
         self.end = timer()
 
-        if self.cfg.dryrun: message("Dryrun, nothing was executed.\n")
+        if self.cfg.dryrun and self.runtime.hid == 0: 
+            message("Dryrun, nothing was executed.\n")
         
         self.runtime.start = "%r" % self.start
         self.runtime.end = "%r" % self.end
@@ -110,8 +114,7 @@ class Bench:
                 reslist = []
                 for i in range(0, self.gxp.size):
                     reslist.append(self.recv_res())
-            else:
-                return
+            else: return
        
         if self.cfg.logdir is None:  # generate random logdir in cwd
             self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
@@ -130,41 +133,40 @@ class Bench:
         self.opts.save_conf("%s/fsbench.conf" % logdir)
         
         # Save results
-        if self.cfg.nolog:
-            self.db = FSDatabase(":memory:")
-        else:
-            self.db = FSDatabase("%s/fsbench.db" % logdir)
+        if self.cfg.nolog: self.db = Database(":memory:")
+        else: self.db = Database("%s/fsbench.db" % logdir)
         self.db.insert_runtime(self.runtime)
         self.db.insert_conf('%s/fsbench.conf' % logdir)
 
         if self.cfg.gxpmode:
-            self.db.ins_rawdata(reslist.pop(0), self.start, True)
             for res in reslist:
-                self.db.ins_rawdata(res, self.start)
+                for r in res: self.db.insert_rawdata(r)
         else:
             for t in self.threads:
                 self.db.insert_rawdata(t.get_res())
-        self.db.close()
         
-        verbose("Saving benchmark data to %s/fsbench.db ..." % logdir, 
-            VERBOSE)
+        if self.cfg.nolog:
+            verbose("Saving benchmark data in memory ...", VERBOSE)
+        else:
+            verbose("Saving benchmark data to %s/fsbench.db ..." % logdir, 
+                VERBOSE)
+
+        self.db.commit() 
+        if self.cfg.noreport: self.db.close()
     
-    def report(self, path=None):
+    def report(self):
         if self.cfg.dryrun or self.cfg.noreport: return
 
-        if self.cfg.gxpmode and self.gxp.rank != 0:
-            return
+        if self.cfg.gxpmode and self.gxp.rank != 0: return
         
         import report
         logdir = self.cfg.logdir
         if self.cfg.report:
             logdir = self.cfg.report
-        if path:
-            logdir = path
         if self.cfg.textreport:
-            self.report = report.TextReport(logdir)
+            self.report = report.TextReport(logdir, self.db)
         else:
-            self.report = report.HTMLReport(logdir)
+            self.report = report.HTMLReport(logdir, self.db, self.cfg)
         self.report.write()
          
     def send_res(self):
@@ -220,7 +222,7 @@ class ThreadSync:
             self.event.wait()
 
 class BenchThread(threading.Thread):
-    def __init__(self, tid, sync, loader):
+    def __init__(self, tid, sync, loader, gxp=None):
         threading.Thread.__init__(self)
         
         self.tid = tid
@@ -232,6 +234,7 @@ class BenchThread(threading.Thread):
         self.name = "Thread h%s:p%s:t%s" % (self.hid, self.pid, self.tid)
         self.wdir, self.load = loader.generate(self.tid)
         self.synctime = 0.0
+        self.gxp = gxp
 
     def run(self):
         if not self.dryrun: os.makedirs(self.wdir)
@@ -252,10 +255,10 @@ class BenchThread(threading.Thread):
         return self.synctime - previous
 
     def gxp_barrier(self):
-        self.cfg.gxp.wp.write('\n')
-        self.cfg.gxp.wp.flush()
-        for i in range(self.cfg.gxp.size):
-            r = self.cfg.gxp.rp.readline()
+        self.gxp.wp.write('\n')
+        self.gxp.wp.flush()
+        for i in range(self.gxp.size):
+            r = self.gxp.rp.readline()
             if r == "": return 1
         return 0
 
