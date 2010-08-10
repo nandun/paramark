@@ -186,9 +186,7 @@ class Options:
         verbose.verbosity = self.vals.verbosity
         
         self.parse_conf()
- 
         self.override_conf()
-        
         self.validate_values()
         
         if self.vals.debug:
