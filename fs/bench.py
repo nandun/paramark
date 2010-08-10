@@ -128,9 +128,10 @@ class Bench:
         logdir = os.path.abspath(self.cfg.logdir)
         
         # Save used configuration file
-        verbose("Saving configurations to %s/fsbench.conf ..." % logdir,
-            VERBOSE)
-        self.opts.save_conf("%s/fsbench.conf" % logdir)
+        if not self.cfg.nolog:
+            verbose("Saving configurations to %s/fsbench.conf ..." 
+                % logdir, VERBOSE)
+            self.opts.save_conf("%s/fsbench.conf" % logdir)
         
         # Save results
         if self.cfg.nolog: self.db = Database(":memory:")
@@ -165,6 +166,8 @@ class Bench:
             logdir = self.cfg.report
         if self.cfg.textreport:
             self.report = report.TextReport(logdir, self.db, self.cfg)
+        elif self.cfg.csvreport:
+            self.report = report.CSVReport(logdir, self.db, self.cfg)
         else:
             self.report = report.HTMLReport(logdir, self.db, self.cfg)
         self.report.write()

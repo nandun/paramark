@@ -24,6 +24,7 @@ import os
 import shutil
 import time
 import ConfigParser
+import csv
 import StringIO
 import xml.dom.minidom
 
@@ -34,7 +35,6 @@ import modules.DHTML as DHTML
 import modules.num as num
 import bench
 import data
-
 from oper import TYPE_META, TYPE_IO, OPS_META, OPS_IO
 
 LOGSCALE_THRESHOLD = 1000
@@ -63,7 +63,7 @@ class Report():
         self.ddir = os.path.abspath("%s/data" % self.rdir)
         if not os.path.exists(self.ddir):
             smart_makedirs(self.ddir)
-    
+
     def __del__(self):
         self.db.close()
 
@@ -84,8 +84,8 @@ class Report():
               (eval(runtime["end"]) - eval(runtime["start"])))))
         res.append(("User", "%s (%s)" % (runtime["user"], runtime["uid"])))
         res.append(("Command", "%s" % runtime["cmdline"]))
-        res.append(("Configuration", "../fsbench.conf"))
         if not self.cfg.nolog:
+            res.append(("Configuration", "../fsbench.conf"))
             res.append(("Data", "../fsbench.db"))
         return res
 
@@ -277,6 +277,7 @@ class Report():
                 
                 if unit == 'auto':
                     accagg_unit, accagg_unit_val = unit_size(agg)
+
                 accagg_figname = "accagg_%s_%s_%s_%s_%s_%s.png" % \
                     (oper, hid, pid, tid, fsize, bsize)
                 t_bytes = 0
@@ -286,7 +287,6 @@ class Report():
                     t_bytes += bsize
                     t_elapsed += e
                     accagg.append(t_bytes / t_elapsed)
-                # TODO: calculate when fsync is set
                 accagg.append(t_bytes / (t_elapsed + elapsed[-1]))
                 self.gplot.impulse_chart(
                     data=map(lambda a:a/accagg_unit_val, accagg),
@@ -429,8 +429,6 @@ class TextReport(Report):
     def __init__(self, datadir, db, cfg):
         Report.__init__(self, datadir, db, cfg)
         self.filename = "%s/report.txt" % self.rdir
-        self.txtwidth = 128
-        self.txtsep = "#" * self.txtwidth
         self.f = None
 
     def runtime_section(self):
@@ -532,15 +530,22 @@ class TextReport(Report):
     
     def write(self):
         self.start = timer2()
-        message("Generating text report to %s/report.txt ..." % self.rdir)
-        self.f = open(self.filename, "w")
+        if self.cfg.quickreport:
+            message("Generating text report ...")
+            self.f = sys.stdout
+        else:
+            message("Generating text report to %s/report.txt ..." % self.rdir)
+            self.f = open(self.filename, "w")
         
         self.runtime_section()
         self.meta_section()
         self.io_section()
         
-        self.f.close()
-        message("Done!")
+        if self.cfg.quickreport:
+            self.f.flush()
+        else:
+            self.f.close()
+            message("Done!")
 
 class HTMLReport(Report):
     def __init__(self, datadir, db, cfg):
@@ -726,7 +731,7 @@ class HTMLReport(Report):
     def meta_thread_report(self, opers, hids, doc, body):
         body.appendChild(doc.H(self.SUBSECTION_SIZE, 
             "Per-Thread Performance"))
-        tHead = [["oper", "tid", "opcnt", "factor", "agg", "opAvg", 
+        tHead = [["oper", "hid", "tid", "opcnt", "factor", "agg", "opAvg", 
             "opMin", "opMax", "opStd", "opDist", "elasped", "accAgg"]]
         rows = []
         for oper in opers:
@@ -786,6 +791,118 @@ class HTMLReport(Report):
         self.css_file()
         message("Done!")
 
+class CSVReport(Report):
+    def __init__(self, datadir, db, cfg):
+        Report.__init__(self, datadir, db, cfg)
+    
+    def runtime_report(self):
+        verbose(" writing runtim csv report ...", VERBOSE_ALL)
+        f = open("%s/runtime.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerows(self.runtime_vals())
+        f.close()
+
+    def meta_report(self):
+        section_order = ["mkdir", "rmdir", "creat", "access", 
+            "open", "open_close", "stat_exist", "stat_non", "utime", 
+            "chmod", "rename", "unlink"]
+        opers = sorted(list_intersect([OPS_META, self.db.get_tables()]), 
+            key=lambda t:section_order.index(t))
+        if len(opers) == 0: return
+        verbose(" writing metadata csv report ...", VERBOSE_MORE)
+        hids = self.db.get_hids(opers[0])
+        pids = self.db.get_pids(opers[0])
+        tids = self.db.get_tids(opers[0])
+        if len(opers) == 0: return
+        if len(hids) > 1 or len(tids) > 1: self.meta_all_report(opers)
+        if len(hids) > 1: self.meta_host_report(opers, hids)
+        if len(hids) >= 1 or len(tids) > 1:
+            self.meta_thread_report(opers, hids)
+    
+    def meta_thread_report(self, opers, hids):
+        verbose(" writing metadata per-thread csv report ...", VERBOSE_ALL)
+        f = open("%s/meta_thread.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "hid", "tid", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"])
+        for oper in opers:
+            for hid in hids:
+                csvw.writerows(self.meta_thread_vals(oper, hid, None))
+        f.close()
+
+    def meta_host_report(self, opers, hids):
+        verbose(" writing metadata per-host csv report ...", VERBOSE_ALL)
+        f = open("%s/meta_host.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "hid", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"])
+        for oper in opers:
+            for hid in hids:
+                csvw.writerows(self.meta_host_vals(oper, hid, None))
+        f.close()
+    
+    def meta_all_report(self, opers):
+        verbose(" writing metadata overall csv report ...", VERBOSE_ALL)
+        f = open("%s/meta_overall.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "opcnt", "factor", "agg", 
+            "opAvg", "opMin", "opMax", "opStd"])
+        for oper in opers:
+            csvw.writerows(self.meta_all_vals(oper, None))
+        f.close()
+    
+    def io_report(self):
+        opers = sorted(list_intersect([OPS_IO, self.db.get_tables()]), 
+            key=lambda t:OPS_IO.index(t))
+        if len(opers) == 0: return
+        verbose(" writing I/O csv report ...", VERBOSE_MORE)
+        hids = self.db.get_hids(opers[0])
+        pids = self.db.get_pids(opers[0])
+        tids = self.db.get_tids(opers[0])
+        if len(hids) > 1 or len(tids) > 1: self.io_all_report(opers)
+        if len(hids) > 1: self.io_host_report(opers, hids)
+        if len(hids) >= 1 or len(tids) > 1:
+            self.io_thread_report(opers, hids)
+    
+    def io_thread_report(self, opers, hids):
+        verbose(" writing I/O per-thread csv report ...", VERBOSE_ALL)
+        f = open("%s/io_thread.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "hid", "tid", "fsize", "bsize", "agg", 
+            "agg w/o close()", "opAvg", "opMin", "opMax", "opStd"])
+        for oper in opers:
+            for hid in hids:
+                csvw.writerows(self.io_thread_vals(oper, hid, None))
+        f.close()
+    
+    def io_host_report(self, opers, hids):
+        verbose(" writing I/O per-host csv report ...", VERBOSE_ALL)
+        f = open("%s/io_host.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "hid", "fsize", "bsize", "agg", "thdAvg", 
+            "thdMin", "thdMax", "thdStd"])
+        for oper in opers:
+            for hid in hids:
+                csvw.writerows(self.io_host_vals(oper, hid, None))
+        f.close()
+
+    def io_all_report(self, opers):
+        verbose(" writing I/O overall csv report ...", VERBOSE_ALL)
+        f = open("%s/io_overall.csv" % self.ddir, "wb")
+        csvw = csv.writer(f)
+        csvw.writerow(["oper", "fsize", "bsize", "agg", "thdAvg", "thdMin",
+            "thdMax", "thdStd"])
+        for oper in opers:
+            csvw.writerows((self.io_all_vals(oper, None)))
+        f.close()
+
+    def write(self):
+        message("Generating CSV report to %s ... " % self.ddir)
+        self.runtime_report()
+        self.meta_report()
+        self.io_report()
+        message("Done!")
+
 ##########################################################################
 # Default configure string
 # Hard-coded for installation convenience
@@ -833,6 +950,11 @@ font-size: 10pt;
 font-style: italic;
 display: block;
 background-color: #C3FDB8;
+}
+
+P[class=supplement] {
+font-family: Times New Roman;
+font-size: 10pt;
 }
 
 IMG[class=thumbnail] {

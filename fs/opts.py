@@ -38,6 +38,11 @@ class Options(BaseOptions):
     
     def _add_default_options(self):
         BaseOptions._add_default_options(self)
+
+        def set_quickreport(option, opt_str, value, parser):
+            parser.values.quickreport = True
+            parser.values.textreport = True
+            parser.values.nolog = True
         
         # Should keep default value None here, since we need to test
         # whether an option has been set by command
@@ -66,9 +71,17 @@ class Options(BaseOptions):
             dest="confirm", default=True,
             help="force to go, do not confirm (default: disabled)")
         
+        self.optParser.add_option("-q", "--quick-report", 
+            action="callback", callback=set_quickreport,
+            help="no log data, show text report only (default: disabled)")
+
         self.optParser.add_option("--text-report", action="store_true",
             dest="textreport", default=False,
             help="generate text report (default: disabled)")
+        
+        self.optParser.add_option("--csv-report", action="store_true",
+            dest="csvreport", default=False,
+            help="generate csv report (default: disabled)")
         
         self.optParser.add_option("--no-log", action="store_true",
             dest="nolog", default=False,
