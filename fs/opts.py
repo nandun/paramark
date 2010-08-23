@@ -155,7 +155,7 @@ class Options(BaseOptions):
 
 FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 # ParaMark Default Benchmarking Configuration
-# last updated: 2010/08/05
+# last updated: 2010/08/10
 
 ##########################################################################
 # Howto:
@@ -169,7 +169,6 @@ FS_BENCHMARK_DEFAULT_CONFIG_STRING = """\
 ##########################################################################
 [global]
 # Benchmark working directory
-# Don't forget quotation marks: " "
 wdir = ./
 
 # Number of concurrent benchmarking thread
@@ -187,11 +186,13 @@ logdir =
 
 # Metadata operations to be performed
 # Does not support line continuation now, keep option in one line
-# e.g., meta = mkdir,rmdir,creat,access,open,open_close,stat_exist,stat_non,utime,chmod,rename,unlink
+# e.g.,
+# meta = mkdir,rmdir,creat,access,open,open_close,stat_exist,stat_non,utime,chmod,rename,unlink
 meta = 
 
 # I/O operations to be performed
-# e.g., io = read,reread,write,rewrite,fread,freread,fwrite,frewrite
+# e.g., 
+# io = read,reread,write,rewrite,fread,freread,fwrite,frewrite
 io = 
 
 # Overwrite following local settings
@@ -205,6 +206,8 @@ factor = 16
 # e.g., fsize=1K,2M,3G, bsize=1KB,2mb,3gb
 fsize = 1M
 bsize = 1K
+
+# Report configuration
 
 ##########################################################################
 # Local Operation Options

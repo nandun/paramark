@@ -124,7 +124,7 @@ class Options:
              os.path.abspath(self.vals.conf)])
         
         if loaded_files is not None:
-            verbose("Successfull load configurations from %s." %
+            verbose("Successfully load configurations from %s." %
                     ", ".join(loaded_files), VERBOSE)
 
     def override_conf(self):
