@@ -21,38 +21,19 @@
 # Data plotting
 #
 
-import matplotlib
-matplotlib.use("Cairo")
-import matplotlib.pyplot as pyplot
-
-class Pyplot:
-    def bar(self, path, data, yerr=[], xticks=[], 
-        title="", xlabel="", ylabel=""):
-        pyplot.clf()
-        pyplot.title(title)
-        pyplot.xlabel(xlabel)
-        pyplot.ylabel(ylabel)
-        ind = map(lambda x:x+0.1, range(0, len(data)))
-        xtickind = map(lambda x:x+0.5, range(0, len(data)))
-        pyplot.xticks(xtickind, xticks, rotation="90")
-        pyplot.bar(ind, data, color='y', yerr=yerr)
-        F = pyplot.gcf()
-        F.set_size_inches((15, 10))
-        pyplot.savefig(path)
-    
-    def point(self, path, data, title="", xlabel="", ylabel=""):
-        pyplot.clf()
-        pyplot.title(title)
-        pyplot.xlabel(xlabel)
-        pyplot.ylabel(ylabel)
-        pyplot.scatter(range(0, len(data)), data)
-        F = pyplot.gcf()
-        F.set_size_inches((15, 10))
-        pyplot.savefig(path)
+import sys
+from verbose import *
 
 class GnuPlot:
     def __init__(self, path):
-        import Gnuplot
+        try:
+            import Gnuplot
+        except ImportError:
+            message(
+"""Module Gnuplot not found, please run "sudo apt-get install python-gnuplot"
+or refer to http://gnuplot-py.sourceforge.net/.""")
+            raise ImportError
+            
         self.p = Gnuplot.Gnuplot()
         self.path = path
     
