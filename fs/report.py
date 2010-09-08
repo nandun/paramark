@@ -555,7 +555,7 @@ class HTMLReport(Report):
             self.gplot = plot.GnuPlot(self.fdir)
         except ImportError:
             message(
-"""Failed to generate HTML report, "--text-report" or "--csv-report",
+"""Failed to generate HTML report, try "-r" with "--text-report" or "--csv-report",
 see "-h" for details.""")
             sys.exit(1)
         

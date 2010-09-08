@@ -106,7 +106,7 @@ class Bench:
 
     def save(self):
         if self.cfg.dryrun: return
-    
+        
         if self.cfg.gxpmode:
             # Gather results
             self.send_res()
@@ -115,7 +115,7 @@ class Bench:
                 for i in range(0, self.gxp.size):
                     reslist.append(self.recv_res())
             else: return
-       
+        
         if self.cfg.logdir is None:  # generate random logdir in cwd
             self.cfg.logdir = os.path.abspath("./pmlog-%s-%s" %
                    (self.runtime.user, time.strftime("%j-%H-%M-%S")))
@@ -126,6 +126,11 @@ class Bench:
         self.cfg.logdir = smart_makedirs(self.cfg.logdir,
             self.cfg.confirm)
         logdir = os.path.abspath(self.cfg.logdir)
+        
+        if self.cfg.nolog:
+            message("Saving data in memory ...")
+        else:
+            message("Saving data to %s/fsbench.db ..." % logdir)
         
         # Save used configuration file
         if not self.cfg.nolog:
@@ -146,19 +151,14 @@ class Bench:
             for t in self.threads:
                 self.db.insert_rawdata(t.get_res())
         
-        if self.cfg.nolog:
-            verbose("Saving benchmark data in memory ...", VERBOSE)
-        else:
-            verbose("Saving benchmark data to %s/fsbench.db ..." % logdir, 
-                VERBOSE)
-
         self.db.commit() 
         if self.cfg.noreport: self.db.close()
     
     def report(self):
         if self.cfg.dryrun or self.cfg.noreport: return
-
         if self.cfg.gxpmode and self.gxp.rank != 0: return
+        
+        message("Generating report ...")
         
         import report
         logdir = self.cfg.logdir
