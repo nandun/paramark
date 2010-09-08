@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+
+#############################################################################
+# ParaMark: Benchmarking Suite for Parallel/Distributed Systems
+# Copyright (C) 2009,2010  Nan Dun <dunnan@yl.is.s.u-tokyo.ac.jp>
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#############################################################################
+
+#
+# fsbench
+# File System Benchmarking Suite
+#
+
+import sys
+import os
+
+from modules import gxp
+from fs.opts import Options
+import fs.bench
+
+# Standalone entry
+def standalone_main(opt):
+    opt.set_usage("[gxpc mw] fsbench [options]")
+    opt.load()
+    
+    mybench = fs.bench.Bench(opt)
+    if opt.vals.report:
+        mybench.report()
+        return 0
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
+    return 0
+
+# GXP entry
+def gxpc_main(fsopt):
+    fsopt.set_usage("gxpc mw fsbench -g [options]")
+    fsopt.load()
+
+    try:
+   	    gxp.set_close_on_exec()
+    except IOError:
+        opt = fs.opts.Options()
+        opt.set_usage("gxpc mw fsbench -g [options]")
+        opt.print_help()
+        return 1
+    
+    mybench = fs.bench.Bench(fsopt)
+    mybench.load()
+    mybench.run()
+    mybench.save()
+    mybench.report()
+
+    return 0
+
+# Main entry
+def main(argv):
+    opt = Options(argv)
+    if opt.vals.gxpmode:
+        return gxpc_main(opt)
+    else:
+        return standalone_main(opt)
+    
+    # Should not reach here
+    return 1
+    
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
