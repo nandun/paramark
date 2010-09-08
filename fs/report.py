@@ -130,7 +130,7 @@ class Report():
                 self.gplot.impulse_chart(data=accagg,
                     name=accagg_figname,
                     title="Accumulated Aggregated Performance",
-                    xlabel="%s system call" % oper,
+                    xlabel="%s System Call" % oper,
                     ylabel="Throughput (ops/sec)")
 
             if unit == 'auto': 
@@ -291,8 +291,8 @@ class Report():
                 self.gplot.impulse_chart(
                     data=map(lambda a:a/accagg_unit_val, accagg),
                     name=accagg_figname,
-                    title="Accumulated Aggregated Write Performance",
-                    xlabel="System Call",
+                    title="Accumulated Aggregated Performance",
+                    xlabel="%s System Call" % oper,
                     ylabel="Throughput (%s/sec)" % accagg_unit)
             
             # unit conversion 
