@@ -530,8 +530,8 @@ class TextReport(Report):
     
     def write(self):
         self.start = timer2()
-        if self.cfg.quickreport:
-            message("Generating text report ...")
+        if self.cfg.textreport and self.cfg.nolog: # Quick report
+            message("Printing text report ...")
             self.f = sys.stdout
         else:
             message("Generating text report to %s/report.txt ..." % self.rdir)
@@ -541,7 +541,7 @@ class TextReport(Report):
         self.meta_section()
         self.io_section()
         
-        if self.cfg.quickreport:
+        if self.cfg.textreport and self.cfg.nolog:
             self.f.flush()
         else:
             self.f.close()
@@ -550,9 +550,14 @@ class TextReport(Report):
 class HTMLReport(Report):
     def __init__(self, datadir, db, cfg):
         Report.__init__(self, datadir, db, cfg)
-        import modules.plot as plot
-        self.pyplot = plot.Pyplot()
-        self.gplot = plot.GnuPlot(self.fdir)
+        try:
+            import modules.plot as plot
+            self.gplot = plot.GnuPlot(self.fdir)
+        except ImportError:
+            message(
+"""Failed to generate HTML report, "--text-report" or "--csv-report",
+see "-h" for details.""")
+            sys.exit(1)
         
         # Load configurations from default to user specified
         cfg = ConfigParser.ConfigParser()

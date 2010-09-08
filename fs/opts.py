@@ -40,7 +40,6 @@ class Options(BaseOptions):
         BaseOptions._add_default_options(self)
 
         def set_quickreport(option, opt_str, value, parser):
-            parser.values.quickreport = True
             parser.values.textreport = True
             parser.values.nolog = True
         
