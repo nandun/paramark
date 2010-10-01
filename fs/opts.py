@@ -92,7 +92,8 @@ class Options(BaseOptions):
     
     def _valid_val(self, opt, val):
         from os import O_RDONLY, O_WRONLY, O_RDWR, O_APPEND,O_CREAT, \
-            O_EXCL, O_TRUNC, F_OK, R_OK, W_OK, X_OK
+            O_EXCL, O_TRUNC, O_DSYNC, O_RSYNC, O_SYNC, O_NDELAY, \
+            O_NONBLOCK, O_NOCTTY, F_OK, R_OK, W_OK, X_OK
         from stat import S_ISUID, S_ISGID, S_ENFMT, S_ISVTX, \
             S_IREAD, S_IWRITE, S_IEXEC, S_IRWXU, S_IRUSR, S_IWUSR, \
             S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, \
