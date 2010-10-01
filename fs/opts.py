@@ -66,14 +66,18 @@ class Options(BaseOptions):
             type="int", dest="nthreads", metavar="NUM", default=None,
             help="number of concurrent threads (default: 1)")
         
-        self.optParser.add_option("-f", "--force", action="store_false",
+        self.optParser.add_option("-f", "--file", action="append",
+            type="string", dest="use_files",metavar="PATH", default=None,
+            help="files to use")
+        
+        self.optParser.add_option("--force", action="store_false",
             dest="confirm", default=True,
             help="force to go, do not confirm (default: disabled)")
         
         self.optParser.add_option("-q", "--quick-report", 
             action="callback", callback=set_quickreport,
             help="no log data, show text report only (default: disabled)")
-
+        
         self.optParser.add_option("--text-report", action="store_true",
             dest="textreport", default=False,
             help="generate text report (default: disabled)")
@@ -136,7 +140,7 @@ class Options(BaseOptions):
                 o = o.strip().lower()
                 if o in OPS_IO: io.append(o)
             if len(io) > 0:
-                io.append('write')
+                #io.append('write')
                 io = sorted(list_unique(io), key=lambda o:OPS_IO.index(o))
             return io
         elif opt == "fsync": return bool(eval(str(val)))
