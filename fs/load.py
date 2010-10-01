@@ -193,7 +193,7 @@ class BenchLoad:
         return load
 
     def get_io_load(self, tid, fsize, bsize):
-        if len(self.cfg.use_files) == self.cfg.nthreads:
+        if self.cfg.use_files and len(self.cfg.use_files) == self.cfg.nthreads:
             return self.cfg.use_files[tid];
         return '%s/io-t%d-%d-%d.tmp' % (self.threaddir, tid, fsize, bsize)
 
